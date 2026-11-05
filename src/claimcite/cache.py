@@ -15,6 +15,7 @@ import re
 import sqlite3
 import sys
 import time
+import zlib
 from collections.abc import Callable
 from pathlib import Path
 
@@ -70,7 +71,7 @@ class CachedHttp:
         try:
             db.execute(
                 "CREATE TABLE IF NOT EXISTS responses ("
-                "url TEXT PRIMARY KEY, body TEXT NOT NULL, fetched_at REAL NOT NULL)"
+                "url TEXT PRIMARY KEY, body BLOB NOT NULL, fetched_at REAL NOT NULL)"
             )
             db.commit()
         finally:
@@ -90,7 +91,9 @@ class CachedHttp:
             self._disable(e)
             return self.http(url)
         if row is not None and time.time() - row[1] <= self.ttl:
-            return row[0]
+            body = row[0]
+            # Bodies are stored compressed; plain text rows are from before that change.
+            return zlib.decompress(body).decode("utf-8") if isinstance(body, bytes) else body
 
         # Exceptions propagate untouched: a failed lookup is never cached.
         body = self.http(url)
@@ -100,7 +103,7 @@ class CachedHttp:
             try:
                 db.execute(
                     "INSERT OR REPLACE INTO responses (url, body, fetched_at) VALUES (?, ?, ?)",
-                    (key, body, time.time()),
+                    (key, zlib.compress(body.encode("utf-8")), time.time()),
                 )
                 db.commit()
             finally:

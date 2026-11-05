@@ -56,6 +56,8 @@ claimcite check 文章.md --format json # 给脚本和 CI 用
 
 查询成功的记录会在磁盘上缓存 **30 天**（默认 `~/.cache/claimcite/v1/`，或 `$XDG_CACHE_HOME/claimcite/v1/`），改一行再跑不会把所有请求重发一遍。查询失败不缓存。单次运行想绕过缓存，加 `--no-cache`。
 
+抓取网页时每个网站每秒最多请求一次，所以有几百个链接的文档，第一次运行要几分钟。只想核查 DOI 和 PMID，加 `--no-web`。PDF 里的引文暂时不核对。
+
 ## 路线图
 
 每一项都可以单独完成。挑一项，开个 issue 说一声你在做，就可以开始。

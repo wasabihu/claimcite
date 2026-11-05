@@ -34,10 +34,11 @@ def main(argv: list[str] | None = None) -> int:
         help="exit with 1 when any finding has this status (default: error)",
     )
     c.add_argument("--no-cache", action="store_true", help="bypass the on-disk lookup cache for this run")
+    c.add_argument("--no-web", action="store_true", help="do not fetch web pages; check DOIs and PMIDs only")
     args = p.parse_args(argv)
 
     text = sys.stdin.read() if args.path == "-" else Path(args.path).read_text(encoding="utf-8")
-    findings = check_text(text, make_lookup(no_cache=args.no_cache))
+    findings = check_text(text, make_lookup(no_cache=args.no_cache), web=not args.no_web)
     print(to_json(findings) if args.format == "json" else to_markdown(findings, args.lang))
     return 1 if any(f.status in FAIL_ON[args.fail_on] for f in findings) else 0
 

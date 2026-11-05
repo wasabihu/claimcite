@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 from claimcite.check import check_reference, quote_found
 from claimcite.extract import extract_references
 from claimcite.models import Record, Reference
@@ -60,3 +62,29 @@ def test_multiplication_sign_matches_x():
 def test_pubmed_record_years_include_epub_date():
     r = Record(source="pubmed", year=2026, years=[2026, 2024])
     assert 2024 in r.years
+
+
+# Quotes the 34-chapter guide copied correctly, but that a literal comparison missed.
+# Each page snippet is from the live page as extracted by web.py.
+@pytest.mark.parametrize(
+    ("quote", "page"),
+    [
+        # straight vs curly quotation marks (cdc.gov)
+        ('CO symptoms are often described as "flu-like."', "CO symptoms are often described as “flu-like.” If you"),
+        # spaces around inline tags (nhs.uk)
+        ("painkillers (NSAIDs), such as ibuprofen", "painkillers ( NSAIDs ), such as ibuprofen"),
+        # spaces between Chinese and digits (cqcdc.org)
+        ("已经增加至26个区县29家门诊", "已经增加至 26 个区县 29 家门诊"),
+        # Chinese quotation marks with spaces (chinacdc.cn)
+        ('降温应遵循"先降温,后转运" 的原则', "降温应遵循 “ 先降温,后转运 ” 的原则"),
+        # a bullet list quoted as one sentence (nhs.uk)
+        ("such as: intense eye pain, a red eye, tenderness", "such as: intense eye pain a red eye tenderness"),
+    ],
+)
+def test_quote_matching_ignores_punctuation_and_spacing(quote, page):
+    assert quote_found(quote, page) is True
+
+
+def test_quote_matching_still_rejects_different_words():
+    page = "There is little you can do to substantially reduce your risk if you are outside"
+    assert quote_found("There is no safe place outside when thunderstorms are in the area", page) is False

@@ -123,3 +123,48 @@ def test_reports_expose_web_result_in_both_languages_and_json():
     assert "Web page is reachable" in to_markdown([f])
     data = json.loads(to_json([f]))
     assert data["findings"][0]["web"]["state"] == "alive"
+
+
+PDF_BODY = "%PDF-1.4\n%����\n1 0 obj << /Filter /FlateDecode >> stream\n�x�\n"
+
+
+def test_pdf_is_alive_but_quotes_are_not_checked():
+    # Seen on a real 574 KB government PDF that does contain the quote: searching the
+    # raw bytes reported it missing, a false warning.
+    result = check_page(web_ref(), WebHttp(page=PDF_BODY))
+    assert result.state == "alive"
+    assert result.quotes == [(GOOD_QUOTE, None)]
+
+    (f,) = findings_for(http=WebHttp(page=PDF_BODY))
+    assert f.status == "ok"
+    report = to_markdown([f], "en")
+    assert "not checked" in report and GOOD_QUOTE in report
+    assert "读不到页面文字" in to_markdown([f], "zh")
+
+
+def test_web_pages_are_fetched_in_parallel():
+    import threading
+    import time
+
+    class SlowHttp:
+        def __init__(self):
+            self.lock = threading.Lock()
+            self.active = 0
+            self.peak = 0
+
+        def __call__(self, url):
+            if url.endswith("/robots.txt"):
+                return ALLOW
+            with self.lock:
+                self.active += 1
+                self.peak = max(self.peak, self.active)
+            time.sleep(0.05)
+            with self.lock:
+                self.active -= 1
+            return PAGE
+
+    http = SlowHttp()
+    text = "".join(f"Page {i}. https://site{i}.example.org/page\n" for i in range(8))
+    findings = check_text(text, Lookup(http=http))
+    assert [f.ref.id for f in findings] == [f"https://site{i}.example.org/page" for i in range(8)]
+    assert http.peak > 1

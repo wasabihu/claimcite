@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from difflib import SequenceMatcher
 
 from .evidence import UNKNOWN, evidence_level
@@ -30,7 +31,9 @@ def compare_titles(stated: str | None, actual: str | None) -> str:
     return "mismatch"
 
 
-def check_reference(ref: Reference, lookup: Lookup) -> Finding:
+def check_reference(ref: Reference, lookup: Lookup, web: bool = True) -> Finding:
+    if ref.kind == "url" and not web:
+        return Finding(ref, status="unchecked")
     if ref.kind == "url":
         result = check_page(ref, lookup.http)
         status = {"alive": "ok", "dead": "warning", "blocked": "unchecked", "failed": "unchecked"}[
@@ -68,10 +71,12 @@ def check_reference(ref: Reference, lookup: Lookup) -> Finding:
     return f
 
 
-def check_text(text: str, lookup: Lookup | None = None) -> list[Finding]:
+def check_text(text: str, lookup: Lookup | None = None, web: bool = True) -> list[Finding]:
     lookup = lookup or Lookup()
     refs = extract_references(text)
     lookup.prefetch(
         dois=[r.id for r in refs if r.kind == "doi"], pmids=[r.id for r in refs if r.kind == "pmid"]
     )
-    return [check_reference(ref, lookup) for ref in refs]
+    # Registry lookups are already batched above; this mainly runs web-page fetches side by side.
+    with ThreadPoolExecutor(max_workers=lookup.workers) as pool:
+        return list(pool.map(lambda ref: check_reference(ref, lookup, web), refs))

@@ -28,6 +28,7 @@ LABELS = {
         "web_blocked": "Skipped: robots.txt disallows automated fetching",
         "web_failed": "Web page lookup failed ({e}); not checked",
         "web_quote_missing": "Quoted text not found on the page: “{q}”",
+        "web_quote_unknown": "Could not read the page text (e.g. a PDF); quoted text not checked: “{q}”",
         "failed": "Lookup failed, try again later ({e})",
         "evidence": "Study type (as tagged by PubMed)",
         "disclaimer": "Automated check. It confirms that sources exist and match; it does not judge "
@@ -53,6 +54,7 @@ LABELS = {
         "web_blocked": "已跳过：robots.txt 不允许自动抓取",
         "web_failed": "网页查询失败（{e}），未核查",
         "web_quote_missing": "页面正文中未找到引文：「{q}」",
+        "web_quote_unknown": "读不到页面文字（比如 PDF），引文未核对：「{q}」",
         "failed": "查询失败，请稍后重试（{e}）",
         "evidence": "研究类型（PubMed 标注）",
         "disclaimer": "自动核查只确认出处存在且对得上，不判断说法本身是否正确，也不构成医疗建议。",
@@ -78,6 +80,7 @@ def _problems(f: Finding, L: dict[str, str]) -> list[str]:
             return [L["web_dead"].format(code=w.status_code or "?")]
         out = [L["web_alive"]]
         out += [L["web_quote_missing"].format(q=q) for q, ok in w.quotes if ok is False]
+        out += [L["web_quote_unknown"].format(q=q) for q, ok in w.quotes if ok is None]
         return out
     if f.error:
         return [L["failed"].format(e=f.error)]

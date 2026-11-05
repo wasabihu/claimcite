@@ -123,3 +123,20 @@ def test_unusable_cache_dir_falls_back_to_network(tmp_path):
     assert cached(URL) == '{"ok": true}'
     assert cached(URL) == '{"ok": true}'
     assert len(backend.calls) == 2
+
+
+def test_bodies_are_stored_compressed(tmp_path):
+    page = "<p>" + "Vaccines are safe and effective. " * 20000 + "</p>"
+    cached = CachedHttp(CountingHttp(body=page), cache_dir=tmp_path)
+    assert cached(URL) == page
+    assert (tmp_path / "cache.sqlite3").stat().st_size < len(page) / 5
+    assert CachedHttp(CountingHttp(), cache_dir=tmp_path)(URL) == page
+
+
+def test_entries_written_before_compression_still_read(tmp_path):
+    CachedHttp(CountingHttp(), cache_dir=tmp_path)  # creates the table
+    with sqlite3.connect(tmp_path / "cache.sqlite3") as db:
+        db.execute("INSERT INTO responses VALUES (?, ?, ?)", (URL, '{"old": true}', time.time()))
+    backend = CountingHttp()
+    assert CachedHttp(backend, cache_dir=tmp_path)(URL) == '{"old": true}'
+    assert backend.calls == []

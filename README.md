@@ -67,6 +67,9 @@ Successful registry responses are cached on disk for **30 days** (default `~/.ca
 or `$XDG_CACHE_HOME/claimcite/v1/`), so re-running after a one-line edit does not repeat every
 request. Lookup failures are never cached. Use `--no-cache` to bypass the cache for one run.
 
+Web pages are fetched at most once a second per site, so the first run over a document with hundreds of
+links takes minutes. Use `--no-web` to check only DOIs and PMIDs. Quotes in PDFs are not checked yet.
+
 ## Roadmap
 
 Each item is a self-contained piece of work. Pick one and open an issue to say you're on it.

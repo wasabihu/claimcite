@@ -13,7 +13,7 @@ from urllib.parse import urlparse, urlunparse
 from urllib.robotparser import RobotFileParser
 
 from .models import Reference, WebResult
-from .net import USER_AGENT, NotFound
+from .net import USER_AGENT, NotFound, polite
 from .text import quote_found
 
 
@@ -62,8 +62,15 @@ def _robots_allows(url: str, http: Callable[[str], str]) -> bool:
     return parser.can_fetch(USER_AGENT, url)
 
 
+def _is_binary(body: str) -> bool:
+    """PDFs and other downloads: we cannot read their text yet, so do not search them."""
+    head = body.lstrip("\ufeff \t\r\n")[:1024]
+    return head.startswith("%PDF-") or "\x00" in head
+
+
 def check_page(ref: Reference, http: Callable[[str], str]) -> WebResult:
     unknown = [(q, None) for q in ref.quotes]
+    polite(urlparse(ref.id).netloc)
     if not _robots_allows(ref.id, http):
         return WebResult(state="blocked", quotes=unknown)
     try:
@@ -72,6 +79,9 @@ def check_page(ref: Reference, http: Callable[[str], str]) -> WebResult:
         return WebResult(state="dead", status_code=404, quotes=unknown)
     except Exception as e:  # noqa: BLE001 - one bad page must not sink the whole report
         return WebResult(state="failed", detail=type(e).__name__, quotes=unknown)
+
+    if _is_binary(body):
+        return WebResult(state="alive", detail="binary", quotes=unknown)
 
     parser = _TextExtractor()
     try:

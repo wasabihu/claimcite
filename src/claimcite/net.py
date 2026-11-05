@@ -16,6 +16,16 @@ USER_AGENT = f"claimcite/{__version__} (+https://github.com/wasabihu/claimcite)"
 _MIN_INTERVAL = {"eutils.ncbi.nlm.nih.gov": 0.4}
 _next_slot: dict[str, float] = {}
 _lock = threading.Lock()
+# Web pages are fetched from many sites that did not sign up for this; one request a second each.
+WEB_INTERVAL = 1.0
+# Registry answers are small; anything bigger is a download we do not need in full.
+MAX_BYTES = 10 * 1024 * 1024
+
+
+def polite(host: str, interval: float = WEB_INTERVAL) -> None:
+    """Rate-limit a host that has no explicit limit yet."""
+    with _lock:
+        _MIN_INTERVAL.setdefault(host, interval)
 
 
 class NotFound(Exception):
@@ -34,7 +44,7 @@ def http_get(url: str, timeout: float = 20.0, retries: int = 3) -> str:
         req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
-                return resp.read().decode("utf-8", errors="replace")
+                return resp.read(MAX_BYTES).decode("utf-8", errors="replace")
         except urllib.error.HTTPError as e:
             if e.code == 404:
                 raise NotFound(url) from e

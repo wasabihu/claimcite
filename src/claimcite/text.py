@@ -19,9 +19,16 @@ def words(s: str) -> str:
     return re.sub(r"[^\w]+", " ", norm(s)).strip()
 
 
+def letters(s: str) -> str:
+    """Only letters and digits: quotation-mark style, punctuation and spacing differ
+    between a page and a faithful quote of it (“ vs ", "26 个" vs "26个", "( NSAIDs )")."""
+    return re.sub(r"[\W_]+", "", norm(s))
+
+
 def quote_found(quote: str, haystack: str | None) -> bool | None:
     """True/False when we could look, None when there was nothing to look in."""
     if not haystack:
         return None
-    hay = norm(haystack)
-    return all(norm(part) in hay for part in ELLIPSIS.split(quote) if part.strip())
+    hay = letters(haystack)
+    parts = [letters(part) for part in ELLIPSIS.split(quote)]
+    return all(part in hay for part in parts if part)
