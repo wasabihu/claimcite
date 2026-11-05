@@ -101,3 +101,25 @@ def test_make_lookup_wires_cache_by_default(tmp_path, monkeypatch, fake_http):
     monkeypatch.setattr(cli, "http_get", fake_http)
     assert isinstance(cli.make_lookup(no_cache=False).http, CachedHttp)
     assert cli.make_lookup(no_cache=True).http is fake_http
+
+
+def test_api_key_is_not_stored_and_does_not_split_the_cache(tmp_path):
+    backend = CountingHttp()
+    base = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=1"
+    CachedHttp(backend, cache_dir=tmp_path)(base + "&api_key=SECRET123")
+    CachedHttp(backend, cache_dir=tmp_path)(base + "&api_key=OTHERKEY")
+    CachedHttp(backend, cache_dir=tmp_path)(base)
+    assert len(backend.calls) == 1
+    assert backend.calls[0].endswith("api_key=SECRET123")  # the network still gets the key
+    raw = (tmp_path / "cache.sqlite3").read_bytes()
+    assert b"SECRET123" not in raw
+
+
+def test_unusable_cache_dir_falls_back_to_network(tmp_path):
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("")  # a file where the cache directory should be
+    backend = CountingHttp()
+    cached = CachedHttp(backend, cache_dir=blocker / "claimcite")
+    assert cached(URL) == '{"ok": true}'
+    assert cached(URL) == '{"ok": true}'
+    assert len(backend.calls) == 2
