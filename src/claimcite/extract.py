@@ -3,7 +3,7 @@
 Supported citation forms:
   - DOI: https://doi.org/10.x/y, doi:10.x/y, or a bare 10.x/y
   - PMID: "PMID: 123" or https://pubmed.ncbi.nlm.nih.gov/123
-  - any other http(s) link (reported, not yet verified)
+  - any other http(s) link (fetched and checked for availability and quoted text)
 
 The text between two citations on the same line is treated as the description of the
 second one, e.g. ``Author (2020). Title. Journal：「quoted words」. <https://doi.org/...>``
@@ -18,7 +18,9 @@ from .models import Reference
 _ASCII_TOKEN = r"[^\s<>\"'\u0080-\uffff]+"
 # No re.I here: case-folding would make the non-ASCII exclusion also drop "s" and "k" (ſ, K).
 DOI_RE = re.compile(r"(?i:https?://(?:dx\.)?doi\.org/|\bdoi:\s*)?\b(10\.\d{4,9}/" + _ASCII_TOKEN + ")")
-PMID_RE = re.compile(r"\bPMID:?\s*(\d{1,9})\b|https?://pubmed\.ncbi\.nlm\.nih\.gov/(\d{1,9})/?", re.IGNORECASE)
+PMID_RE = re.compile(
+    r"\bPMID:?\s*(\d{1,9})\b|https?://pubmed\.ncbi\.nlm\.nih\.gov/(\d{1,9})/?", re.IGNORECASE
+)
 URL_RE = re.compile(r"https?://" + _ASCII_TOKEN)
 
 YEAR_RE = re.compile(r"\((\d{4})(?:-\d{1,2}(?:-\d{1,2})?)?[a-z]?\)")
@@ -28,7 +30,9 @@ JOURNAL_ONLY = re.compile(r"^[^.?!]{3,150},\s*\d+\s*(?:\(\d+\))?\s*(?:,\s*[eE]?\
 # "Is it true? Psychological Science, 26": title ends at the question mark.
 TITLE_THEN_JOURNAL = re.compile(r"^(.+?[?!])\s+[A-Z][^?!]*,\s*\d+.*$")
 QUOTE_RES = [re.compile(r"「(.+?)」"), re.compile(r"“(.+?)”"), re.compile(r"\"([^\"]{4,}?)\"")]
-LEADING_NOISE = re.compile(r"^(?:\s|[；;,，、]|（[^）]*）|\([^)]*\)(?=\s*[；;])|[-*]\s*|来源[：:]|Sources?:)+", re.IGNORECASE)
+LEADING_NOISE = re.compile(
+    r"^(?:\s|[；;,，、]|（[^）]*）|\([^)]*\)(?=\s*[；;])|[-*]\s*|来源[：:]|Sources?:)+", re.IGNORECASE
+)
 
 _TRAILING = ".,;:!?"
 

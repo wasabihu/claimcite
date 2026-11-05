@@ -34,10 +34,13 @@ $ claimcite check examples/sample.md
 | The year matches (±1 for online-first vs print) | same |
 | Text in quotes (`"…"`, `“…”`, `「…」`) appears in the abstract | PubMed / Crossref abstract |
 | Study type: meta-analysis, RCT, observational, animal… | PubMed publication types and MeSH |
+| A web link is alive and contains the quoted text | fetch the page (respecting `robots.txt`), strip HTML, normalise whitespace |
 
 It reads Markdown or plain text and understands the common
 `Author (Year). Title. Journal: "quote". https://doi.org/…` pattern, plus `doi:…`, bare DOIs,
-`PMID: …` and PubMed links. Other web links are listed but not verified yet.
+`PMID: …` and PubMed links. Other web links are fetched (respecting `robots.txt`) and checked for
+availability and for the quoted text. A dead link or a missing quote is a **warning**, never an error —
+pages change and some sites block bots. When a page cannot be read the link stays *not checked*.
 
 **What it does not do (yet):** decide whether a source *supports* a claim. That needs a language model and a
 labelled test set. See the roadmap. claimcite only confirms that sources exist and match what the text says
@@ -68,7 +71,7 @@ request. Lookup failures are never cached. Use `--no-cache` to bypass the cache 
 
 Each item is a self-contained piece of work. Pick one and open an issue to say you're on it.
 
-- [ ] **Web links**: check that the page is alive and contains the quoted text
+- [x] **Web links**: check that the page is alive and contains the quoted text
 - [ ] **More registries**: OpenAlex, Semantic Scholar, arXiv, CNKI/Wanfang metadata, DataCite
 - [ ] **Retractions**: flag retracted papers (Crossref / Retraction Watch data)
 - [ ] **Full text**: look for quotes in open-access full text (PubMed Central, Europe PMC), not only abstracts

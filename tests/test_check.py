@@ -21,7 +21,9 @@ def test_existing_doi_with_matching_title_quote_and_evidence(fake_http):
     assert f.exists is True
     assert f.title_match == "match"
     assert f.year_match is True
-    assert f.quotes == [("Coffee consumption has been associated with decreased mortality in previous studies", True)]
+    assert f.quotes == [
+        ("Coffee consumption has been associated with decreased mortality in previous studies", True)
+    ]
     assert f.record.pmid == "31055709"
     assert f.evidence.key == "meta_analysis"
 
@@ -73,13 +75,19 @@ def test_unknown_pmid(fake_http):
 
 
 def test_web_links_are_reported_as_unchecked(fake_http):
+    # Web links are now fetched; an unroutable URL fails gracefully instead of
+    # being silently skipped (issue #1).
     (f,) = run("WHO (2023). News. https://www.who.int/news/item/x", fake_http)
     assert f.status == "unchecked"
-    assert fake_http.calls == []
+    assert f.web.state == "failed"
+    assert any(call.endswith("/robots.txt") for call in fake_http.calls)
 
 
 def test_evidence_ranking():
-    assert evidence_level(["Journal Article", "Randomized Controlled Trial", "Meta-Analysis"], True, False).key == "meta_analysis"
+    assert (
+        evidence_level(["Journal Article", "Randomized Controlled Trial", "Meta-Analysis"], True, False).key
+        == "meta_analysis"
+    )
     assert evidence_level(["Journal Article"], False, True).key == "animal"
     assert evidence_level(["Case Reports"], True, False).key == "case_report"
     assert evidence_level(["Journal Article"], True, False).key == "unknown"

@@ -41,6 +41,16 @@ class Evidence:
 
 
 @dataclass
+class WebResult:
+    """What a web-page lookup found (issue #1)."""
+
+    state: str  # "alive" | "dead" | "blocked" | "failed"
+    status_code: int | None = None
+    detail: str | None = None
+    quotes: list[tuple[str, bool | None]] = field(default_factory=list)
+
+
+@dataclass
 class Finding:
     ref: Reference
     status: str  # "ok" | "warning" | "error" | "unchecked"
@@ -51,3 +61,4 @@ class Finding:
     quotes: list[tuple[str, bool | None]] = field(default_factory=list)
     evidence: Evidence | None = None
     error: str | None = None  # set when a registry could not be reached
+    web: WebResult | None = None
