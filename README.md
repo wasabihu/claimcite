@@ -58,6 +58,12 @@ cat article.md | claimcite check -
 The exit code is 1 when any citation has an error, so it works as a CI gate (`--fail-on warning|never` to tune).
 Set `NCBI_API_KEY` to raise PubMed's rate limit.
 
+### Lookup cache
+
+Successful registry responses are cached on disk for **30 days** (default `~/.cache/claimcite/v1/`,
+or `$XDG_CACHE_HOME/claimcite/v1/`), so re-running after a one-line edit does not repeat every
+request. Lookup failures are never cached. Use `--no-cache` to bypass the cache for one run.
+
 ## Roadmap
 
 Each item is a self-contained piece of work. Pick one and open an issue to say you're on it.
@@ -70,7 +76,8 @@ Each item is a self-contained piece of work. Pick one and open an issue to say y
 - [ ] **Benchmark**: a public, labelled set of real and fabricated citations to measure every check
 - [ ] **Citation styles**: numbered references `[1]`, footnotes `[^1]`, BibTeX, Word / PDF input
 - [ ] **Integrations**: GitHub Action, pre-commit hook, browser extension
-- [ ] **Caching** between runs, and faster batch lookups
+- [x] **Caching** between runs (30-day on-disk cache, `--no-cache` to bypass)
+- [ ] Faster batch lookups
 
 ## Contributing
 
