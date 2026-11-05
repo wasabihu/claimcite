@@ -16,15 +16,15 @@ def crossref(**message):
 
 def test_crossref_title_markup_is_removed():
     escaped = (
-        "Number of Deaths due to Carbon Monoxide Poisoning&lt;sup&gt;&lt;xref ref-type=\"fn\" rid=\"pn1\"&gt;"
+        'Number of Deaths due to Carbon Monoxide Poisoning&lt;sup&gt;&lt;xref ref-type="fn" rid="pn1"&gt;'
         "①&lt;/xref&gt;&lt;/sup&gt; by Month — China, 2018"
     )
     assert parse_crossref(crossref(title=[escaped])).title == (
         "Number of Deaths due to Carbon Monoxide Poisoning by Month — China, 2018"
     )
-    assert parse_crossref(crossref(title=["Effect of Long-term Vitamin D\n   <sub>3</sub>\n Supplementation"])).title == (
-        "Effect of Long-term Vitamin D3 Supplementation"
-    )
+    assert parse_crossref(
+        crossref(title=["Effect of Long-term Vitamin D\n   <sub>3</sub>\n Supplementation"])
+    ).title == ("Effect of Long-term Vitamin D3 Supplementation")
     assert parse_crossref(crossref(title=["<i>Do</i>\n   Men Overperceive"])).title == "Do Men Overperceive"
 
 
@@ -36,11 +36,16 @@ def test_journal_and_pages_are_not_a_title():
 
 def test_any_publication_year_counts():
     # Online first in 2024, in a 2026 issue: authors usually cite the issue year.
-    record = parse_crossref(crossref(
-        title=["Return-to-Work After Attempted Digit Replantation"],
-        issued={"date-parts": [[2024, 10]]},
-        **{"published-print": {"date-parts": [[2026, 1]]}, "published-online": {"date-parts": [[2024, 10, 3]]}},
-    ))
+    record = parse_crossref(
+        crossref(
+            title=["Return-to-Work After Attempted Digit Replantation"],
+            issued={"date-parts": [[2024, 10]]},
+            **{
+                "published-print": {"date-parts": [[2026, 1]]},
+                "published-online": {"date-parts": [[2024, 10, 3]]},
+            },
+        )
+    )
 
     class OneRecord:
         def doi(self, _):
@@ -70,7 +75,10 @@ def test_pubmed_record_years_include_epub_date():
     ("quote", "page"),
     [
         # straight vs curly quotation marks (cdc.gov)
-        ('CO symptoms are often described as "flu-like."', "CO symptoms are often described as “flu-like.” If you"),
+        (
+            'CO symptoms are often described as "flu-like."',
+            "CO symptoms are often described as “flu-like.” If you",
+        ),
         # spaces around inline tags (nhs.uk)
         ("painkillers (NSAIDs), such as ibuprofen", "painkillers ( NSAIDs ), such as ibuprofen"),
         # spaces between Chinese and digits (cqcdc.org)
@@ -78,7 +86,10 @@ def test_pubmed_record_years_include_epub_date():
         # Chinese quotation marks with spaces (chinacdc.cn)
         ('降温应遵循"先降温,后转运" 的原则', "降温应遵循 “ 先降温,后转运 ” 的原则"),
         # a bullet list quoted as one sentence (nhs.uk)
-        ("such as: intense eye pain, a red eye, tenderness", "such as: intense eye pain a red eye tenderness"),
+        (
+            "such as: intense eye pain, a red eye, tenderness",
+            "such as: intense eye pain a red eye tenderness",
+        ),
     ],
 )
 def test_quote_matching_ignores_punctuation_and_spacing(quote, page):

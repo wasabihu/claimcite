@@ -93,7 +93,12 @@ class CachedHttp:
         if row is not None and time.time() - row[1] <= self.ttl:
             body = row[0]
             # Bodies are stored compressed; plain text rows are from before that change.
-            return zlib.decompress(body).decode("utf-8") if isinstance(body, bytes) else body
+            if not isinstance(body, bytes):
+                return body
+            try:
+                return zlib.decompress(body).decode("utf-8")
+            except (zlib.error, UnicodeDecodeError):
+                pass  # damaged row: fetch again and overwrite it
 
         # Exceptions propagate untouched: a failed lookup is never cached.
         body = self.http(url)

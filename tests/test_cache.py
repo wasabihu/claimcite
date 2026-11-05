@@ -140,3 +140,13 @@ def test_entries_written_before_compression_still_read(tmp_path):
     backend = CountingHttp()
     assert CachedHttp(backend, cache_dir=tmp_path)(URL) == '{"old": true}'
     assert backend.calls == []
+
+
+def test_corrupt_cached_body_falls_back_to_network(tmp_path):
+    backend = CountingHttp()
+    CachedHttp(backend, cache_dir=tmp_path)(URL)
+    with sqlite3.connect(tmp_path / "cache.sqlite3") as db:
+        db.execute("UPDATE responses SET body = ?", (b"not zlib data",))
+
+    assert CachedHttp(backend, cache_dir=tmp_path)(URL) == '{"ok": true}'
+    assert len(backend.calls) == 2

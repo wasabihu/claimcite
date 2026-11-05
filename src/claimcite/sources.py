@@ -109,6 +109,7 @@ def _safe(fn):
             return fn(arg)
         except Exception as e:  # noqa: BLE001 - one bad lookup must not sink the whole report
             return LookupFailed(f"{type(e).__name__}: {e}")
+
     return run
 
 
@@ -163,12 +164,20 @@ class Lookup:
             ids = list(pmids)
             for chunk in _chunks(live, 40):
                 term = quote(" OR ".join(f"{d}[doi]" for d in chunk), safe="")
-                found = json.loads(self.http(
-                    f"{EUTILS}/esearch.fcgi?db=pubmed&term={term}&retmode=json&retmax=200{self._ncbi_key}"))
+                found = json.loads(
+                    self.http(
+                        f"{EUTILS}/esearch.fcgi?db=pubmed&term={term}&retmode=json&retmax=200{self._ncbi_key}"
+                    )
+                )
                 ids += found.get("esearchresult", {}).get("idlist", [])
             for chunk in _chunks(list(dict.fromkeys(ids)), 150):
-                records.update(parse_pubmed(self.http(
-                    f"{EUTILS}/efetch.fcgi?db=pubmed&id={','.join(chunk)}&retmode=xml{self._ncbi_key}")))
+                records.update(
+                    parse_pubmed(
+                        self.http(
+                            f"{EUTILS}/efetch.fcgi?db=pubmed&id={','.join(chunk)}&retmode=xml{self._ncbi_key}"
+                        )
+                    )
+                )
         except Exception as e:  # noqa: BLE001
             pubmed_error = LookupFailed(f"PubMed: {type(e).__name__}: {e}")
 
