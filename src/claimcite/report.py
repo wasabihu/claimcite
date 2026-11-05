@@ -21,6 +21,7 @@ LABELS = {
         "quote_unknown": "No abstract available to check the quote: “{q}”",
         "web": "Web page: not verified yet",
         "failed": "Lookup failed, try again later ({e})",
+        "retracted": "Retracted publication: {d}",
         "evidence": "Study type (as tagged by PubMed)",
         "disclaimer": "Automated check. It confirms that sources exist and match; it does not judge "
                       "whether a claim is true and is not medical advice.",
@@ -38,6 +39,7 @@ LABELS = {
         "quote_unknown": "没有摘要，无法核对引文：「{q}」",
         "web": "网页链接：暂不核查",
         "failed": "查询失败，请稍后重试（{e}）",
+        "retracted": "已撤回的文献：{d}",
         "evidence": "研究类型（PubMed 标注）",
         "disclaimer": "自动核查只确认出处存在且对得上，不判断说法本身是否正确，也不构成医疗建议。",
     },
@@ -52,6 +54,8 @@ def summary(findings: list[Finding]) -> dict[str, int]:
 def _problems(f: Finding, L: dict[str, str]) -> list[str]:
     if f.ref.kind == "url":
         return [L["web"]]
+    if f.retracted:
+        return [L["retracted"].format(d=f.retracted)]
     if f.error:
         return [L["failed"].format(e=f.error)]
     if f.exists is False:
@@ -107,6 +111,7 @@ def to_json(findings: list[Finding]) -> str:
             "quotes": [{"text": q, "found_in_abstract": ok} for q, ok in f.quotes],
             "evidence": f.evidence.key if f.evidence else None,
             "error": f.error,
+            "retracted": f.retracted,
         }
 
     return json.dumps({"summary": summary(findings), "findings": [one(f) for f in findings]},

@@ -59,6 +59,9 @@ def check_reference(ref: Reference, lookup: Lookup) -> Finding:
     if record is None:
         return Finding(ref, status="error", exists=False)
 
+    if getattr(record, "retracted", False):
+        return Finding(ref, status="error", exists=True, record=record, retracted=record.retraction_doi or "retracted")
+
     f = Finding(ref, status="ok", exists=True, record=record)
     f.title_match = compare_titles(ref.title, record.title)
     years = record.years or ([record.year] if record.year else [])

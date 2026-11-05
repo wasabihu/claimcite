@@ -111,3 +111,18 @@ def test_doi_org_404_means_the_doi_does_not_exist(fake_http):
     (f,) = run("Smith A (2022). Vitamin D. JAMA. https://doi.org/10.1001/jama.2022.99999", fake_http)
     assert f.exists is False
     assert f.status == "error"
+
+
+def test_retracted_paper_is_flagged(fake_http):
+    text = "Wakefield AJ (1998). Ileal-lymphoid-nodular hyperplasia. Lancet. https://doi.org/10.1016/S0140-6736(97)11096-0"
+    (f,) = run(text, fake_http)
+    assert f.status == "error"
+    assert f.retracted == "retracted"
+    assert f.error is None
+
+
+def test_retraction_notice_is_not_flagged(fake_http):
+    text = "Retraction notice. Lancet. https://doi.org/10.1016/S0140-6736(10)60175-4"
+    (f,) = run(text, fake_http)
+    assert f.retracted is None
+    assert f.status != "error" or f.exists is False
