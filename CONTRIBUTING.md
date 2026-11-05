@@ -22,6 +22,7 @@
 
 **AI-assisted contributions are welcome.** Say so in the pull request, and make sure you have read and run
 what you submit. You are responsible for it, not the tool.
+AI agents: read [AGENTS.md](AGENTS.md) first.
 
 ## 中文
 
@@ -37,4 +38,4 @@ what you submit. You are responsible for it, not the tool.
 5. **少误报。** 一个老是误报的检查工具，最后没人会理会。不确定的情况报"警告"或"未核查"，不要报"错误"。
 6. **善待免费服务。** 尽量批量请求，遵守访问频率限制，请求时带上 claimcite 的 User-Agent。
 
-**欢迎 AI 辅助完成的贡献。** 在 PR 里说明，并确保提交的内容你自己读过、跑过。对内容负责的是你，不是工具。
+**欢迎 AI 辅助完成的贡献。** 在 PR 里说明，并确保提交的内容你自己读过、跑过。对内容负责的是你，不是工具。AI 代理请先读 [AGENTS.md](AGENTS.md)。
