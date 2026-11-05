@@ -28,7 +28,7 @@ JOURNAL_ONLY = re.compile(r"^[^.?!]{3,150},\s*\d+\s*(?:\(\d+\))?\s*(?:,\s*[eE]?\
 # "Is it true? Psychological Science, 26": title ends at the question mark.
 TITLE_THEN_JOURNAL = re.compile(r"^(.+?[?!])\s+[A-Z][^?!]*,\s*\d+.*$")
 QUOTE_RES = [re.compile(r"「(.+?)」"), re.compile(r"“(.+?)”"), re.compile(r"\"([^\"]{4,}?)\"")]
-LEADING_NOISE = re.compile(r"^(?:\s|[；;,，、]|（[^）]*）|\([^)]*\)(?=\s*[；;])|[-*]\s*|来源[：:]|Sources?:)+", re.IGNORECASE)
+LEADING_NOISE = re.compile(r"^(?:\s|[；;,，、]|（[^）]*）|\([^)]*\)(?=\s*[；;])|[-*]\s*|来源[：:]|Sources?:|\[\^?\d+\]:?|\^?\d+\.\s)+", re.IGNORECASE)
 
 _TRAILING = ".,;:!?"
 
@@ -58,8 +58,23 @@ def _describe(segment: str) -> tuple[int | None, str | None, list[str], str]:
 
 
 def extract_references(text: str) -> list[Reference]:
+    lines = text.splitlines()
+    # usage tracking: number -> set of lines where [n]/[^n] is cited (excluding definitions)
+    usage: dict[str, set[int]] = {}
+    def_num_re = re.compile(r"^\s*\[?\^?(\d+)\]?\s*[:.]?\s")
+    cite_re = re.compile(r"\[\^?(\d+)\]")
+    def_lines: set[int] = set()
+    for lineno, line in enumerate(lines, start=1):
+        if def_num_re.match(line):
+            def_lines.add(lineno)
+    for lineno, line in enumerate(lines, start=1):
+        if lineno in def_lines:
+            continue
+        for m in cite_re.finditer(line):
+            usage.setdefault(m.group(1), set()).add(lineno)
+
     refs: list[Reference] = []
-    for lineno, line in enumerate(text.splitlines(), start=1):
+    for lineno, line in enumerate(lines, start=1):
         hits: list[tuple[int, int, str, str]] = []  # start, end, kind, id
         for m in DOI_RE.finditer(line):
             hits.append((m.start(), m.end(), "doi", _clean_id(m.group(1)).lower()))
@@ -71,8 +86,12 @@ def extract_references(text: str) -> list[Reference]:
                 hits.append((m.start(), m.end(), "url", _clean_id(m.group(0))))
         hits.sort()
         prev_end = 0
+        # detect definition number for this line
+        dm = def_num_re.match(line)
+        def_number = dm.group(1) if dm else None
         for start, end, kind, ident in hits:
             year, title, quotes, ctx = _describe(line[prev_end:start])
-            refs.append(Reference(kind, ident, lineno, year, title, quotes, ctx))
+            used = sorted(usage.get(def_number, ())) if def_number else []
+            refs.append(Reference(kind, ident, lineno, year, title, quotes, ctx, used))
             prev_end = end
     return refs

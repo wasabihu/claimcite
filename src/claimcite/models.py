@@ -14,6 +14,7 @@ class Reference:
     title: str | None = None  # title as the author wrote it
     quotes: list[str] = field(default_factory=list)  # text the author says comes from the source
     context: str = ""  # the citation text this was parsed from
+    used_lines: list[int] = field(default_factory=list)  # lines where a numbered/footnote ref is cited
 
 
 @dataclass
