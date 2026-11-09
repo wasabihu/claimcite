@@ -26,8 +26,12 @@ def letters(s: str) -> str:
 
 
 def quote_found(quote: str, haystack: str | None) -> bool | None:
-    """True/False when we could look, None when there was nothing to look in."""
-    if not haystack:
+    """True/False when we could look, None when there was nothing to look in.
+
+    A quote with Chinese in it cannot be found word for word in a text with no Chinese: it is a
+    translation or paraphrase, so the answer is None, not False.
+    """
+    if not haystack or (CJK.search(quote) and not CJK.search(haystack)):
         return None
     hay = letters(haystack)
     parts = [letters(part) for part in ELLIPSIS.split(quote)]
