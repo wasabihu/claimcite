@@ -55,3 +55,29 @@ def test_english_quotes_are_extracted():
     text = 'Smith J (2020). A trial. BMJ: "the effect was null". https://doi.org/10.1136/bmj.x1'
     (ref,) = extract_references(text)
     assert ref.quotes == ["the effect was null"]
+
+
+def test_doi_inside_a_publisher_link_leaves_out_the_page_name():
+    """Frontiers links end in /full; "10.3389/fpsyg.2021.744551/full" was reported as a DOI that
+    does not exist, an error for a real paper (found in a topic note on 2026-11-09)."""
+    text = (
+        "- https://www.frontiersin.org/journals/psychology/articles/10.3389/fpsyg.2021.744551/full\n"
+        "- https://www.frontiersin.org/articles/10.3389/fpsyg.2016.00176/abstract\n"
+        "- https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0123456\n"
+        "- https://www.tandfonline.com/doi/full/10.1080/15298860309032\n"
+        "- https://onlinelibrary.wiley.com/doi/epdf/10.1002/jclp.21923\n"
+        "- https://link.springer.com/content/pdf/10.1007/s12671-015-0389-4.pdf\n"
+    )
+    assert [r.id for r in extract_references(text)] == [
+        "10.3389/fpsyg.2021.744551",
+        "10.3389/fpsyg.2016.00176",
+        "10.1371/journal.pone.0123456",
+        "10.1080/15298860309032",
+        "10.1002/jclp.21923",
+        "10.1007/s12671-015-0389-4",
+    ]
+
+
+def test_a_doi_written_out_keeps_every_character():
+    # Only a DOI found inside some other site's link is trimmed; what the author wrote as a DOI is not.
+    assert extract_references("doi:10.1000/abc/full")[0].id == "10.1000/abc/full"

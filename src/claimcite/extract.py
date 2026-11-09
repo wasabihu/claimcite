@@ -29,6 +29,11 @@ PMID_RE = re.compile(
     r"\bPMID:?\s*(\d{1,9})\b|https?://pubmed\.ncbi\.nlm\.nih\.gov/(\d{1,9})/?", re.IGNORECASE
 )
 URL_RE = re.compile(r"https?://" + _ASCII_TOKEN)
+# A publisher link carries the DOI followed by the name of the page: .../10.3389/fpsyg.2021.744551/full
+PAGE_SUFFIX = re.compile(
+    r"(?:/(?:full|abstract|fulltext|pdf|epdf|pdfdirect|html|summary|references|figures))+$|\.pdf$",
+    re.IGNORECASE,
+)
 
 YEAR_RE = re.compile(r"\((\d{4})(?:-\d{1,2}(?:-\d{1,2})?)?[a-z]?\)")
 TITLE_RE = re.compile(r"\(\d{4}[^)]*\)\.\s*(.+?)(?:\.\s|\.?\s*$|[：:]\s*[「“\"])")
@@ -79,6 +84,11 @@ def _clean_id(raw: str) -> str:
     return raw
 
 
+def _inside_link(line: str, pos: int) -> bool:
+    """True when the DOI at pos is part of another site's address, not written out on its own."""
+    return any(m.start() < pos < m.end() for m in URL_RE.finditer(line))
+
+
 def _describe(segment: str) -> tuple[int | None, str | None, list[str], str]:
     seg = LEADING_NOISE.sub("", segment).rstrip(" <[(")
     year_m = YEAR_RE.search(seg)
@@ -101,7 +111,10 @@ def extract_references(text: str) -> list[Reference]:
     for lineno, line in enumerate(text.splitlines(), start=1):
         hits: list[tuple[int, int, str, str]] = []  # start, end, kind, id
         for m in DOI_RE.finditer(line):
-            hits.append((m.start(), m.end(), "doi", _clean_id(m.group(1)).lower()))
+            doi = _clean_id(m.group(1))
+            if m.start() == m.start(1) and _inside_link(line, m.start()):
+                doi = PAGE_SUFFIX.sub("", doi)
+            hits.append((m.start(), m.end(), "doi", doi.lower()))
         for m in PMID_RE.finditer(line):
             if not any(s <= m.start() < e for s, e, *_ in hits):
                 hits.append((m.start(), m.end(), "pmid", m.group(1) or m.group(2)))
