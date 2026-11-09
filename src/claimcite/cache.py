@@ -80,39 +80,53 @@ class CachedHttp:
     def __call__(self, url: str) -> str:
         if not self.enabled:
             return self.http(url)
-        key = cache_key(url)
+        body = self.get(url)
+        if body is not None:
+            return body
+        # Exceptions propagate untouched: a failed lookup is never cached.
+        body = self.http(url)
+        self.put(url, body)
+        return body
+
+    def get(self, url: str) -> str | None:
+        """The cached body for this URL, or None. Never touches the network."""
+        if not self.enabled:
+            return None
         try:
             db = self._connect()
             try:
-                row = db.execute("SELECT body, fetched_at FROM responses WHERE url = ?", (key,)).fetchone()
+                row = db.execute(
+                    "SELECT body, fetched_at FROM responses WHERE url = ?", (cache_key(url),)
+                ).fetchone()
             finally:
                 db.close()
         except sqlite3.Error as e:
             self._disable(e)
-            return self.http(url)
-        if row is not None and time.time() - row[1] <= self.ttl:
-            body = row[0]
-            # Bodies are stored compressed; plain text rows are from before that change.
-            if not isinstance(body, bytes):
-                return body
-            try:
-                return zlib.decompress(body).decode("utf-8")
-            except (zlib.error, UnicodeDecodeError):
-                pass  # damaged row: fetch again and overwrite it
+            return None
+        if row is None or time.time() - row[1] > self.ttl:
+            return None
+        body = row[0]
+        # Bodies are stored compressed; plain text rows are from before that change.
+        if not isinstance(body, bytes):
+            return body
+        try:
+            return zlib.decompress(body).decode("utf-8")
+        except (zlib.error, UnicodeDecodeError):
+            return None  # damaged row: fetch again and overwrite it
 
-        # Exceptions propagate untouched: a failed lookup is never cached.
-        body = self.http(url)
-
+    def put(self, url: str, body: str) -> None:
+        """Store a successful response, e.g. one work taken out of a batch answer."""
+        if not self.enabled:
+            return
         try:
             db = self._connect()
             try:
                 db.execute(
                     "INSERT OR REPLACE INTO responses (url, body, fetched_at) VALUES (?, ?, ?)",
-                    (key, zlib.compress(body.encode("utf-8")), time.time()),
+                    (cache_key(url), zlib.compress(body.encode("utf-8")), time.time()),
                 )
                 db.commit()
             finally:
                 db.close()
         except sqlite3.Error as e:
             self._disable(e)
-        return body

@@ -14,6 +14,7 @@ import re
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from urllib.error import HTTPError
 from urllib.parse import quote
 
 from .models import Record
@@ -78,7 +79,10 @@ def clean_markup(s: str | None) -> str | None:
 
 
 def parse_crossref(payload: str) -> Record:
-    msg = json.loads(payload)["message"]
+    return _crossref_record(json.loads(payload)["message"])
+
+
+def _crossref_record(msg: dict) -> Record:
     years = []
     for key in ("issued", "published-print", "published-online", "published"):
         y = ((msg.get(key) or {}).get("date-parts") or [[None]])[0][0]
@@ -92,6 +96,10 @@ def parse_crossref(payload: str) -> Record:
         doi=(msg.get("DOI") or "").lower() or None,
         abstract=clean_markup(msg.get("abstract")),
     )
+
+
+def _crossref_url(doi: str) -> str:
+    return f"https://api.crossref.org/works/{quote(doi, safe='/')}"
 
 
 class LookupFailed(Exception):
@@ -189,10 +197,9 @@ class Lookup:
             if d in by_doi:
                 self._cache[("doi", d)] = by_doi[d]
 
-        # 3. Everything else: Crossref, in parallel.
-        with ThreadPoolExecutor(self.workers) as pool:
-            for d, r in zip(rest, pool.map(_safe(self._crossref), rest)):
-                self._cache[("doi", d)] = r
+        # 3. Everything else: Crossref, a batch at a time. It allows one request at a time per client.
+        for d, r in self._crossref_many(rest).items():
+            self._cache[("doi", d)] = r
 
     def _doi_exists(self, doi: str) -> bool:
         try:
@@ -203,7 +210,49 @@ class Lookup:
 
     def _crossref(self, doi: str) -> Record:
         try:
-            return parse_crossref(self.http(f"https://api.crossref.org/works/{quote(doi, safe='/')}"))
+            return parse_crossref(self.http(_crossref_url(doi)))
         except NotFound:
             # Registered (e.g. DataCite, CNKI) but no metadata we can read yet.
             return Record(source="doi.org", doi=doi)
+
+    def _crossref_many(self, dois: list[str]) -> dict[str, Record | LookupFailed]:
+        """One request per 20 DOIs instead of one each. Answers already in the on-disk cache are
+        used as they are, and each work in a batch answer is cached under its own URL, so adding
+        one citation to a document does not refetch the rest."""
+        cached = getattr(self.http, "get", None)
+        store = getattr(self.http, "put", None)
+        out: dict[str, Record | LookupFailed] = {}
+        todo = []
+        for d in dois:
+            body = cached(_crossref_url(d)) if cached else None
+            if body is not None:
+                out[d] = _safe(parse_crossref)(body)
+            elif "," in d:  # a comma would split the filter; ask for this one on its own
+                out[d] = _safe(self._crossref)(d)
+            else:
+                todo.append(d)
+        for chunk in _chunks(todo, 20):
+            filters = ",".join(f"doi:{d}" for d in chunk)
+            url = f"https://api.crossref.org/works?filter={quote(filters, safe=':/,()')}&rows={len(chunk)}"
+            try:
+                items = json.loads(self.http(url))["message"]["items"]
+            except HTTPError as e:
+                if e.code != 400:
+                    out.update(dict.fromkeys(chunk, LookupFailed(f"Crossref: HTTP {e.code}")))
+                    continue
+                # One malformed DOI rejects the whole batch: ask for each on its own.
+                out.update({d: _safe(self._crossref)(d) for d in chunk})
+                continue
+            except Exception as e:  # noqa: BLE001
+                out.update(dict.fromkeys(chunk, LookupFailed(f"Crossref: {type(e).__name__}: {e}")))
+                continue
+            found = {(item.get("DOI") or "").lower(): item for item in items}
+            for d in chunk:
+                item = found.get(d)
+                if item is None:
+                    out[d] = Record(source="doi.org", doi=d)  # registered elsewhere, as a 404 would say
+                    continue
+                if store:
+                    store(_crossref_url(d), json.dumps({"message": item}))
+                out[d] = _crossref_record(item)
+        return out

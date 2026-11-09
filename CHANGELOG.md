@@ -4,6 +4,9 @@
 
 - A quote in Chinese next to an English abstract or web page is no longer a warning ("quoted text not found").
   It is a translation or paraphrase, so the report notes that it cannot be compared word for word.
+- Crossref is asked for 20 DOIs per request, one request at a time, as its public pool requires
+  (x-concurrency-limit: 1). Before, eight requests went out at once and some got HTTP 429. Each work is
+  still cached on its own, so adding a citation does not refetch the others.
 
 ## 0.1.0 (2026-11-09)
 
