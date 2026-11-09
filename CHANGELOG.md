@@ -1,6 +1,11 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## Unreleased
+
+- A quote in Chinese next to an English abstract or web page is no longer a warning ("quoted text not found").
+  It is a translation or paraphrase, so the report notes that it cannot be compared word for word.
+
+## 0.1.0 (2026-11-09)
 
 First release on PyPI: `pipx install claimcite`.
 

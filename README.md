@@ -40,7 +40,8 @@ It reads Markdown or plain text and understands the common
 `Author (Year). Title. Journal: "quote". https://doi.org/…` pattern, plus `doi:…`, bare DOIs,
 `PMID: …` and PubMed links. Numbered citations work too: a quote in the text followed by `[1]`, `[^1]`,
 `[1, 2]` or `[1-3]` is checked against the matching entry in the reference list (`[1] …`, `1. …` or
-`[^1]: …`). Code blocks and inline code are skipped. Other web links are fetched (respecting `robots.txt`) and checked for
+`[^1]: …`). Code blocks and inline code are skipped. A quote in Chinese is only compared with Chinese text: next to an English abstract or page it is
+noted as not comparable word for word, not reported as missing. Other web links are fetched (respecting `robots.txt`) and checked for
 availability and for the quoted text. A dead link or a missing quote is a **warning**, never an error —
 pages change and some sites block bots. When a page cannot be read the link stays *not checked*.
 

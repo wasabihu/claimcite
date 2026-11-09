@@ -4,6 +4,7 @@ import json
 from collections import Counter
 
 from .models import Finding
+from .text import CJK
 
 STATUSES = ("ok", "warning", "error", "unchecked")
 
@@ -22,6 +23,7 @@ LABELS = {
         "year": "Year differs: document {a}, registry {b}",
         "quote_missing": "Quoted text not found in the abstract (it may be in the full text): “{q}”",
         "quote_unknown": "No abstract available to check the quote: “{q}”",
+        "quote_language": "Quote is in Chinese and the abstract is not, so it cannot be compared word for word: “{q}”",
         "web": "Web page: not verified yet",
         "web_alive": "Web page is reachable",
         "web_dead": "Web page could not be opened (HTTP {code})",
@@ -29,6 +31,7 @@ LABELS = {
         "web_failed": "Web page lookup failed ({e}); not checked",
         "web_quote_missing": "Quoted text not found on the page: “{q}”",
         "web_quote_unknown": "Could not read the page text (e.g. a PDF); quoted text not checked: “{q}”",
+        "web_quote_language": "Quote is in Chinese and the page is not, so it cannot be compared word for word: “{q}”",
         "failed": "Lookup failed, try again later ({e})",
         "evidence": "Study type (as tagged by PubMed)",
         "disclaimer": "Automated check. It confirms that sources exist and match; it does not judge "
@@ -48,6 +51,7 @@ LABELS = {
         "year": "年份不一致：文中 {a}，登记 {b}",
         "quote_missing": "引文在摘要中没有找到（可能在全文里）：「{q}」",
         "quote_unknown": "没有摘要，无法核对引文：「{q}」",
+        "quote_language": "引文是中文，摘要不是中文，无法逐字核对：「{q}」",
         "web": "网页链接：暂不核查",
         "web_alive": "网页可访问",
         "web_dead": "网页打不开（HTTP {code}）",
@@ -55,6 +59,7 @@ LABELS = {
         "web_failed": "网页查询失败（{e}），未核查",
         "web_quote_missing": "页面正文中未找到引文：「{q}」",
         "web_quote_unknown": "读不到页面文字（比如 PDF），引文未核对：「{q}」",
+        "web_quote_language": "引文是中文，网页正文不是中文，无法逐字核对：「{q}」",
         "failed": "查询失败，请稍后重试（{e}）",
         "evidence": "研究类型（PubMed 标注）",
         "disclaimer": "自动核查只确认出处存在且对得上，不判断说法本身是否正确，也不构成医疗建议。",
@@ -80,7 +85,11 @@ def _problems(f: Finding, L: dict[str, str]) -> list[str]:
             return [L["web_dead"].format(code=w.status_code or "?")]
         out = [L["web_alive"]]
         out += [L["web_quote_missing"].format(q=q) for q, ok in w.quotes if ok is False]
-        out += [L["web_quote_unknown"].format(q=q) for q, ok in w.quotes if ok is None]
+        readable = w.detail != "binary"
+        for q, ok in w.quotes:
+            if ok is None:
+                key = "web_quote_language" if readable and CJK.search(q) else "web_quote_unknown"
+                out.append(L[key].format(q=q))
         return out
     if f.error:
         return [L["failed"].format(e=f.error)]
@@ -98,7 +107,9 @@ def _problems(f: Finding, L: dict[str, str]) -> list[str]:
         if ok is False:
             out.append(L["quote_missing"].format(q=q))
         elif ok is None:
-            out.append(L["quote_unknown"].format(q=q))
+            has_abstract = bool(f.record and f.record.abstract)
+            key = "quote_language" if has_abstract and CJK.search(q) else "quote_unknown"
+            out.append(L[key].format(q=q))
     return out
 
 
