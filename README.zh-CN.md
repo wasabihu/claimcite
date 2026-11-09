@@ -71,7 +71,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: wasabihu/claimcite@v0.1.0
+      - uses: wasabihu/claimcite@v0.2.0
         with:
           files: "docs/**/*.md"  # 默认：所有 Markdown 文件
           fail-on: error         # 也可以是 warning、never
@@ -88,7 +88,7 @@ jobs:
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/wasabihu/claimcite
-    rev: v0.1.0
+    rev: v0.2.0
     hooks:
       - id: claimcite
         # args: [--no-web]   # 更快：不抓普通网页链接
