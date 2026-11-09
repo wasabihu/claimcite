@@ -92,7 +92,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: wasabihu/claimcite@v0.2.0
+      - uses: wasabihu/claimcite@v0.2.1
         with:
           files: "docs/**/*.md"  # default: every Markdown file
           fail-on: error         # or: warning, never
@@ -108,7 +108,7 @@ The report also appears in the job summary. Runs on Linux and macOS runners.
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/wasabihu/claimcite
-    rev: v0.2.0
+    rev: v0.2.1
     hooks:
       - id: claimcite
         # args: [--no-web]   # faster: skip ordinary web links
