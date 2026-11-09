@@ -38,7 +38,9 @@ $ claimcite check examples/sample.md
 
 It reads Markdown or plain text and understands the common
 `Author (Year). Title. Journal: "quote". https://doi.org/…` pattern, plus `doi:…`, bare DOIs,
-`PMID: …` and PubMed links. Other web links are fetched (respecting `robots.txt`) and checked for
+`PMID: …` and PubMed links. Numbered citations work too: a quote in the text followed by `[1]`, `[^1]`,
+`[1, 2]` or `[1-3]` is checked against the matching entry in the reference list (`[1] …`, `1. …` or
+`[^1]: …`). Code blocks and inline code are skipped. Other web links are fetched (respecting `robots.txt`) and checked for
 availability and for the quoted text. A dead link or a missing quote is a **warning**, never an error —
 pages change and some sites block bots. When a page cannot be read the link stays *not checked*.
 
@@ -80,7 +82,8 @@ Each item is a self-contained piece of work. Pick one and open an issue to say y
 - [ ] **Full text**: look for quotes in open-access full text (PubMed Central, Europe PMC), not only abstracts
 - [ ] **Support check**: does the source support the sentence? Pluggable LLM judge, local models first
 - [ ] **Benchmark**: a public, labelled set of real and fabricated citations to measure every check
-- [ ] **Citation styles**: numbered references `[1]`, footnotes `[^1]`, BibTeX, Word / PDF input
+- [x] **Numbered citations**: `[1]`, `[1-3]` and footnotes `[^1]` linked to the reference list
+- [ ] **More input formats**: BibTeX, Word / PDF input
 - [ ] **Integrations**: GitHub Action, pre-commit hook, browser extension
 - [x] **Caching** between runs (30-day on-disk cache, `--no-cache` to bypass)
 - [ ] Faster batch lookups

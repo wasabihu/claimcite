@@ -7,6 +7,9 @@ Supported citation forms:
 
 The text between two citations on the same line is treated as the description of the
 second one, e.g. ``Author (2020). Title. Journal：「quoted words」. <https://doi.org/...>``
+
+Numbered citations work too: a quote in the body followed by ``[1]``, ``[^note]``, ``[1, 2]`` or ``[1-3]``
+is checked against the reference-list entry with that label (``[1] …``, ``1. …`` or ``[^note]: …``).
 """
 
 from __future__ import annotations
@@ -33,6 +36,14 @@ QUOTE_RES = [re.compile(r"「(.+?)」"), re.compile(r"“(.+?)”"), re.compile(
 LEADING_NOISE = re.compile(
     r"^(?:\s|[；;,，、]|（[^）]*）|\([^)]*\)(?=\s*[；;])|[-*]\s*|来源[：:]|Sources?:)+", re.IGNORECASE
 )
+
+# A reference-list entry: "[1] …", "[^note]: …", "1. …" or "1) …" at the start of a line.
+DEF_RE = re.compile(r"^\s*(?:\[(\^?[\w-]+)\]:?|(\d{1,3})[.)])\s+")
+# A marker in the body: [1], [^note], [1, 2], [1-3]. Not a Markdown link "[x](…)", "[x][y]" or "[x]:".
+MARK_RE = re.compile(r"\[(\^[\w-]+|\d{1,3}(?:\s*[-–,]\s*\d{1,3})*)\](?![(:\[])")
+FENCE_RE = re.compile(r"^\s*(```|~~~)")
+INLINE_CODE_RE = re.compile(r"`[^`]*`")
+SENTENCE_END = re.compile(r"[。！？!?]|\.(?=\s)")
 
 _TRAILING = ".,;:!?"
 
@@ -79,4 +90,61 @@ def extract_references(text: str) -> list[Reference]:
             year, title, quotes, ctx = _describe(line[prev_end:start])
             refs.append(Reference(kind, ident, lineno, year, title, quotes, ctx))
             prev_end = end
+    _attach_numbered_quotes(text, refs)
     return refs
+
+
+def _labels(raw: str) -> list[str]:
+    """``1-3`` -> 1, 2, 3; ``1, 4`` -> 1, 4; ``^note`` -> ^note."""
+    if raw.startswith("^"):
+        return [raw]
+    out: list[str] = []
+    for part in re.split(r"\s*,\s*", raw):
+        m = re.fullmatch(r"(\d+)\s*[-–]\s*(\d+)", part)
+        if m and 0 < int(m[2]) - int(m[1]) < 50:
+            out += [str(i) for i in range(int(m[1]), int(m[2]) + 1)]
+        else:
+            out.append(part.strip())
+    return out
+
+
+def _quotes_before(line: str, start: int, end: int) -> list[str]:
+    """Quotes in the sentence that the marker at ``end`` closes, not earlier than ``start``."""
+    spans = sorted(
+        (m.start(), m.end(), m.group(1).strip()) for rx in QUOTE_RES for m in rx.finditer(line, start, end)
+    )
+    for m in SENTENCE_END.finditer(line, start, end):
+        inside = any(s <= m.start() < e for s, e, _ in spans)
+        if not inside and line[m.end() : end].strip():
+            start = m.end()  # a sentence ended before the marker; its quotes belong to something else
+    return [q for s, _, q in spans if s >= start]
+
+
+def _attach_numbered_quotes(text: str, refs: list[Reference]) -> None:
+    lines = text.splitlines()
+    by_label: dict[str, Reference] = {}
+    defs: set[int] = set()
+    for lineno, line in enumerate(lines, start=1):
+        m = DEF_RE.match(line)
+        first = next((r for r in refs if r.line == lineno), None)
+        if m and first:
+            by_label.setdefault(m.group(1) or m.group(2), first)
+            defs.add(lineno)
+    if not by_label:
+        return
+    fenced = False
+    for lineno, line in enumerate(lines, start=1):
+        if FENCE_RE.match(line):
+            fenced = not fenced
+            continue
+        if fenced or lineno in defs:
+            continue
+        line = INLINE_CODE_RE.sub(lambda m: " " * len(m.group(0)), line)  # `x[1]` is code, not a citation
+        prev = 0
+        for m in MARK_RE.finditer(line):
+            quotes = _quotes_before(line, prev, m.start())
+            prev = m.end()
+            for label in _labels(m.group(1)):
+                ref = by_label.get(label)
+                if ref:
+                    ref.quotes += [q for q in quotes if q not in ref.quotes]
