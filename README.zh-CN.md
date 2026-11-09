@@ -45,7 +45,7 @@ $ claimcite check examples/sample.md --lang zh
 需要 Python 3.10 及以上，不需要任何 API key。
 
 ```bash
-uv tool install git+https://github.com/wasabihu/claimcite   # 或 pipx install git+...
+pipx install claimcite                   # 或 uv tool install claimcite
 claimcite check 文章.md --lang zh     # 中文报告
 claimcite check 文章.md --format json # 给脚本和 CI 用
 ```

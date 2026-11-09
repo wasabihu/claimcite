@@ -1,0 +1,51 @@
+# Push a tag such as v0.1.0 to publish. The version in src/claimcite/__init__.py must match the tag.
+# PyPI side (once): add a trusted publisher for this repo, workflow release.yml, environment "pypi".
+name: Release
+on:
+  push:
+    tags: ["v*"]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync
+      - run: uv run pytest -q
+      - name: Tag matches the package version
+        run: test "v$(uv run python -c 'import claimcite; print(claimcite.__version__)')" = "$GITHUB_REF_NAME"
+      - run: uv build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+  pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+  github-release:
+    needs: pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Release notes from CHANGELOG.md
+        run: awk -v v="${GITHUB_REF_NAME#v}" '/^## /{if (p) exit; if (index($0, "## " v)) {p=1; next}} p' CHANGELOG.md > notes.md
+      - run: gh release create "$GITHUB_REF_NAME" dist/* --title "claimcite $GITHUB_REF_NAME" --notes-file notes.md
+        env:
+          GH_TOKEN: ${{ github.token }}

@@ -53,7 +53,7 @@ about them. It is not medical advice.
 Requires Python 3.10+. No API keys needed.
 
 ```bash
-uv tool install git+https://github.com/wasabihu/claimcite   # or: pipx install git+...
+pipx install claimcite                   # or: uv tool install claimcite
 claimcite check article.md               # Markdown report
 claimcite check article.md --lang zh     # 中文报告
 claimcite check article.md --format json # for scripts and CI
