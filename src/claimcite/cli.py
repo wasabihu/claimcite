@@ -13,6 +13,27 @@ from .report import to_json, to_markdown
 from .sources import Lookup
 
 FAIL_ON = {"error": {"error"}, "warning": {"error", "warning"}, "never": set()}
+DOCUMENT_SUFFIXES = {".md", ".markdown", ".txt"}
+CANNOT_READ = {"en": "claimcite: cannot read {path}: {reason}", "zh": "claimcite：读不了 {path}：{reason}"}
+NO_DOCUMENTS = {
+    "en": "claimcite: no Markdown or text files in {path}",
+    "zh": "claimcite：{path} 里没有 Markdown 或文本文件",
+}
+
+
+def documents(path: str) -> list[str]:
+    """A directory stands for the Markdown and text files in it, hidden folders left out."""
+    root = Path(path)
+    if path == "-" or not root.is_dir():
+        return [path]
+    found = (
+        f
+        for f in root.rglob("*")
+        if f.suffix.lower() in DOCUMENT_SUFFIXES
+        and f.is_file()
+        and not any(part.startswith(".") for part in f.relative_to(root).parts)
+    )
+    return sorted(str(f) for f in found)
 
 
 def make_lookup(no_cache: bool = False) -> Lookup:
@@ -43,11 +64,24 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = p.parse_args(argv)
 
+    texts = {}
+    for given in args.paths:
+        paths = documents(given)
+        if not paths:
+            print(NO_DOCUMENTS[args.lang].format(path=given), file=sys.stderr)
+            return 2
+        for path in paths:
+            try:
+                texts[path] = sys.stdin.read() if path == "-" else Path(path).read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError) as e:
+                reason = e.strerror if isinstance(e, OSError) and e.strerror else type(e).__name__
+                print(CANNOT_READ[args.lang].format(path=path, reason=reason), file=sys.stderr)
+                return 2
+
     lookup = make_lookup(no_cache=args.no_cache)
-    several = len(args.paths) > 1
+    several = len(texts) > 1 or any(Path(g).is_dir() for g in args.paths if g != "-")
     failed, reports = False, []
-    for path in args.paths:
-        text = sys.stdin.read() if path == "-" else Path(path).read_text(encoding="utf-8")
+    for path, text in texts.items():
         findings = check_text(text, lookup, web=not args.no_web, search=not args.no_search)
         failed |= any(f.status in FAIL_ON[args.fail_on] for f in findings)
         if args.format == "json":
