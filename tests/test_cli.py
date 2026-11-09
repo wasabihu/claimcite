@@ -62,3 +62,28 @@ def test_cli_checks_several_files_in_one_run(tmp_path, fake_http, monkeypatch, c
 
     assert cli.main(["check", str(good)]) == 0  # one file: output unchanged, no file header
     assert "## " not in capsys.readouterr().out.split("# Citation check")[0]
+
+
+def test_a_directory_checks_the_documents_in_it(tmp_path, fake_http, monkeypatch, capsys):
+    """`claimcite check docs/` used to stop with IsADirectoryError."""
+    (tmp_path / "b.md").write_text("ASPREE, PMID: 30221596\n", encoding="utf-8")
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "a.txt").write_text("ASPREE, PMID: 30221596\n", encoding="utf-8")
+    (tmp_path / "cover.png").write_bytes(b"\x89PNG")
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".git" / "x.md").write_text("PMID: 1\n", encoding="utf-8")
+    monkeypatch.setattr(cli, "make_lookup", lambda no_cache=False: Lookup(http=fake_http))
+
+    assert cli.main(["check", str(tmp_path), "--format", "json"]) == 0
+    paths = [f["path"] for f in json.loads(capsys.readouterr().out)["files"]]
+    assert paths == [str(tmp_path / "b.md"), str(tmp_path / "sub" / "a.txt")]
+
+
+def test_a_missing_file_is_a_short_message(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "make_lookup", lambda no_cache=False: Lookup(http=lambda url: ""))
+    assert cli.main(["check", str(tmp_path / "nope.md")]) == 2
+    err = capsys.readouterr().err
+    assert "nope.md" in err and "Traceback" not in err
+
+    assert cli.main(["check", str(tmp_path / "nope.md"), "--lang", "zh"]) == 2
+    assert "读不了" in capsys.readouterr().err

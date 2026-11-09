@@ -94,7 +94,7 @@ repos:
         # args: [--no-web]   # 更快：不抓普通网页链接
 ```
 
-改动过的 Markdown 文件都会查一遍，有引用报错误时提交会被拦下。命令行也可以一次查多个文件：`claimcite check docs/*.md`。
+改动过的 Markdown 文件都会查一遍，有引用报错误时提交会被拦下。命令行也可以一次查多个文件：`claimcite check docs/*.md`，或者整个目录：`claimcite check docs/`。
 
 ## 路线图
 

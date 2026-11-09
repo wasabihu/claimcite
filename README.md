@@ -115,7 +115,7 @@ repos:
 ```
 
 Every changed Markdown file is checked; the commit stops when a citation has an error. You can also pass
-several files on the command line: `claimcite check docs/*.md`.
+several files on the command line: `claimcite check docs/*.md`, or a whole folder: `claimcite check docs/`.
 
 ## Roadmap
 

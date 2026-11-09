@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `claimcite check docs/` checks the Markdown and text files in a folder; before, it stopped with a Python
+  traceback. A missing or unreadable file is a one-line message and exit code 2.
+
 ## 0.2.0 (2026-11-09)
 
 - A quote in Chinese next to an English abstract or web page is no longer a warning ("quoted text not found").
