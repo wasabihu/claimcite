@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.1 (2026-11-09)
 
 - A DOI inside a publisher link (`frontiersin.org/…/10.3389/fpsyg.2021.744551/full`, `…/10.1057/sj.2014.30.pdf`)
   no longer takes the page name with it. Before, a real paper was reported as a DOI that does not exist.
