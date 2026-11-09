@@ -58,6 +58,40 @@ claimcite check 文章.md --format json # 给脚本和 CI 用
 
 抓取网页时每个网站每秒最多请求一次，所以有几百个链接的文档，第一次运行要几分钟。只想核查 DOI 和 PMID，加 `--no-web`。PDF 里的引文暂时不核对。
 
+### 在 CI 里用：GitHub Action
+
+```yaml
+# .github/workflows/citations.yml
+on: [push, pull_request]
+jobs:
+  claimcite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: wasabihu/claimcite@v0.1.0
+        with:
+          files: "docs/**/*.md"  # 默认：所有 Markdown 文件
+          fail-on: error         # 也可以是 warning、never
+          lang: zh               # 中文报告
+          web: "true"            # 写 "false" 只查 DOI 和 PMID
+```
+
+报告也会显示在这次运行的摘要（job summary）里。支持 Linux 和 macOS 运行器。
+
+### 每次提交前查：pre-commit
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/wasabihu/claimcite
+    rev: v0.1.0
+    hooks:
+      - id: claimcite
+        # args: [--no-web]   # 更快：不抓普通网页链接
+```
+
+改动过的 Markdown 文件都会查一遍，有引用报错误时提交会被拦下。命令行也可以一次查多个文件：`claimcite check docs/*.md`。
+
 ## 路线图
 
 每一项都可以单独完成。挑一项，开个 issue 说一声你在做，就可以开始。
@@ -70,7 +104,8 @@ claimcite check 文章.md --format json # 给脚本和 CI 用
 - [ ] **基准测试集**：公开一套标注好的真实引用和编造引用，用来衡量每项检查的准确度
 - [x] **编号引用**：`[1]`、`[1-3]` 和脚注 `[^1]` 对应到文末参考文献
 - [ ] **更多输入格式**：BibTeX，以及 Word / PDF 输入
-- [ ] **集成**：GitHub Action、pre-commit 钩子、浏览器插件
+- [x] **集成**：GitHub Action、pre-commit 钩子
+- [ ] 浏览器插件
 - [x] **缓存**：多次运行之间缓存结果（磁盘缓存 30 天，`--no-cache` 可绕过）
 - [ ] 批量查询进一步提速
 

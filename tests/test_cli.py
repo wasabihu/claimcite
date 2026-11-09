@@ -40,3 +40,25 @@ def test_no_web_skips_web_pages(tmp_path, monkeypatch, capsys):
     assert cli.main(["check", str(doc), "--no-web", "--format", "json"]) == 0
     (f,) = json.loads(capsys.readouterr().out)["findings"]
     assert f["status"] == "unchecked" and f["web"] is None
+
+
+def test_cli_checks_several_files_in_one_run(tmp_path, fake_http, monkeypatch, capsys):
+    """pre-commit and the GitHub Action pass every changed file at once."""
+    good, bad = tmp_path / "good.md", tmp_path / "bad.md"
+    good.write_text("ASPREE, PMID: 30221596\n", encoding="utf-8")
+    bad.write_text(
+        "Ghost (2021). Never. https://doi.org/10.9999/does-not-exist-claimcite\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(cli, "make_lookup", lambda no_cache=False: Lookup(http=fake_http))
+
+    assert cli.main(["check", str(good), str(bad)]) == 1
+    out = capsys.readouterr().out
+    assert out.index(f"## {good}") < out.index("Randomized controlled trial") < out.index(f"## {bad}")
+
+    assert cli.main(["check", str(good), str(bad), "--format", "json"]) == 1
+    data = json.loads(capsys.readouterr().out)
+    assert [f["path"] for f in data["files"]] == [str(good), str(bad)]
+    assert data["summary"]["error"] == 1 and data["files"][0]["summary"]["error"] == 0
+
+    assert cli.main(["check", str(good)]) == 0  # one file: output unchanged, no file header
+    assert "## " not in capsys.readouterr().out.split("# Citation check")[0]

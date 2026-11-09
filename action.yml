@@ -1,0 +1,43 @@
+name: claimcite
+description: Check that the citations in your Markdown are real, point to the paper the text names, and contain the quoted words.
+author: wasabihu
+branding:
+  icon: check-circle
+  color: green
+inputs:
+  files:
+    description: Files or glob patterns to check, separated by spaces or new lines.
+    default: "**/*.md"
+  fail-on:
+    description: Fail the step when any citation has this status (error, warning or never).
+    default: error
+  lang:
+    description: Report language (en or zh).
+    default: en
+  web:
+    description: Also fetch ordinary web links and look for the quoted text (true or false).
+    default: "true"
+runs:
+  using: composite
+  steps:
+    - name: Install claimcite
+      shell: bash
+      run: |
+        python3 -m venv "$RUNNER_TEMP/claimcite"
+        "$RUNNER_TEMP/claimcite/bin/pip" install --quiet "$GITHUB_ACTION_PATH"
+    - name: Check citations
+      shell: bash
+      env:
+        CLAIMCITE_FILES: ${{ inputs.files }}
+        CLAIMCITE_FAIL_ON: ${{ inputs.fail-on }}
+        CLAIMCITE_LANG: ${{ inputs.lang }}
+        CLAIMCITE_WEB: ${{ inputs.web }}
+      run: |
+        set -o pipefail
+        shopt -s globstar nullglob
+        files=()
+        for pattern in $CLAIMCITE_FILES; do files+=($pattern); done
+        if [ ${#files[@]} -eq 0 ]; then echo "claimcite: no files match '$CLAIMCITE_FILES'"; exit 0; fi
+        args=(--fail-on "$CLAIMCITE_FAIL_ON" --lang "$CLAIMCITE_LANG")
+        [ "$CLAIMCITE_WEB" = "false" ] && args+=(--no-web)
+        "$RUNNER_TEMP/claimcite/bin/claimcite" check "${files[@]}" "${args[@]}" | tee -a "$GITHUB_STEP_SUMMARY"

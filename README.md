@@ -72,6 +72,40 @@ request. Lookup failures are never cached. Use `--no-cache` to bypass the cache 
 Web pages are fetched at most once a second per site, so the first run over a document with hundreds of
 links takes minutes. Use `--no-web` to check only DOIs and PMIDs. Quotes in PDFs are not checked yet.
 
+### In CI: GitHub Action
+
+```yaml
+# .github/workflows/citations.yml
+on: [push, pull_request]
+jobs:
+  claimcite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: wasabihu/claimcite@v0.1.0
+        with:
+          files: "docs/**/*.md"  # default: every Markdown file
+          fail-on: error         # or: warning, never
+          web: "true"            # "false" checks DOIs and PMIDs only
+```
+
+The report also appears in the job summary. Runs on Linux and macOS runners.
+
+### Before each commit: pre-commit
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/wasabihu/claimcite
+    rev: v0.1.0
+    hooks:
+      - id: claimcite
+        # args: [--no-web]   # faster: skip ordinary web links
+```
+
+Every changed Markdown file is checked; the commit stops when a citation has an error. You can also pass
+several files on the command line: `claimcite check docs/*.md`.
+
 ## Roadmap
 
 Each item is a self-contained piece of work. Pick one and open an issue to say you're on it.
@@ -84,7 +118,8 @@ Each item is a self-contained piece of work. Pick one and open an issue to say y
 - [ ] **Benchmark**: a public, labelled set of real and fabricated citations to measure every check
 - [x] **Numbered citations**: `[1]`, `[1-3]` and footnotes `[^1]` linked to the reference list
 - [ ] **More input formats**: BibTeX, Word / PDF input
-- [ ] **Integrations**: GitHub Action, pre-commit hook, browser extension
+- [x] **Integrations**: GitHub Action, pre-commit hook
+- [ ] Browser extension
 - [x] **Caching** between runs (30-day on-disk cache, `--no-cache` to bypass)
 - [ ] Faster batch lookups
 

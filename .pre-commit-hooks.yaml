@@ -1,0 +1,7 @@
+- id: claimcite
+  name: claimcite
+  description: Check that the citations in Markdown files are real and match what the text says.
+  entry: claimcite check
+  language: python
+  types: [markdown]
+  require_serial: true

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -23,8 +24,8 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="claimcite", description="Check the citations in a document.")
     p.add_argument("--version", action="version", version=f"claimcite {__version__}")
     sub = p.add_subparsers(dest="command", required=True)
-    c = sub.add_parser("check", help="check a Markdown or text file ('-' reads stdin)")
-    c.add_argument("path")
+    c = sub.add_parser("check", help="check Markdown or text files ('-' reads stdin)")
+    c.add_argument("paths", nargs="+", metavar="path")
     c.add_argument("--format", choices=["md", "json"], default="md")
     c.add_argument("--lang", choices=["en", "zh"], default="en")
     c.add_argument(
@@ -37,10 +38,25 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--no-web", action="store_true", help="do not fetch web pages; check DOIs and PMIDs only")
     args = p.parse_args(argv)
 
-    text = sys.stdin.read() if args.path == "-" else Path(args.path).read_text(encoding="utf-8")
-    findings = check_text(text, make_lookup(no_cache=args.no_cache), web=not args.no_web)
-    print(to_json(findings) if args.format == "json" else to_markdown(findings, args.lang))
-    return 1 if any(f.status in FAIL_ON[args.fail_on] for f in findings) else 0
+    lookup = make_lookup(no_cache=args.no_cache)
+    several = len(args.paths) > 1
+    failed, reports = False, []
+    for path in args.paths:
+        text = sys.stdin.read() if path == "-" else Path(path).read_text(encoding="utf-8")
+        findings = check_text(text, lookup, web=not args.no_web)
+        failed |= any(f.status in FAIL_ON[args.fail_on] for f in findings)
+        if args.format == "json":
+            reports.append({"path": path, **json.loads(to_json(findings))})
+        else:
+            print(f"## {path}\n" if several else "", to_markdown(findings, args.lang), sep="")
+    if args.format == "json":
+        if several:
+            total = {k: sum(r["summary"][k] for r in reports) for k in reports[0]["summary"]}
+            print(json.dumps({"summary": total, "files": reports}, ensure_ascii=False, indent=2))
+        else:
+            reports[0].pop("path")
+            print(json.dumps(reports[0], ensure_ascii=False, indent=2))
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
