@@ -3,6 +3,7 @@
 - doi.org handle API: does the DOI exist at all (any registrar)?
 - PubMed E-utilities: title, year, abstract, publication types (biomedical papers)
 - Crossref: title and year for DOIs that are not in PubMed
+- Title search (Crossref, then PubMed) for references written out without a DOI or PMID
 """
 
 from __future__ import annotations
@@ -17,10 +18,12 @@ from concurrent.futures import ThreadPoolExecutor
 from urllib.error import HTTPError
 from urllib.parse import quote
 
-from .models import Record
+from .models import Record, Reference
 from .net import NotFound, http_get
+from .text import compare_titles, title_ratio, words
 
 EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
+CROSSREF_SEARCH = "https://api.crossref.org/works?rows=5&select=DOI,title,issued,published-print,published-online&query.bibliographic="
 _TAG = re.compile(r"<[^>]+>")
 
 
@@ -82,6 +85,10 @@ def parse_crossref(payload: str) -> Record:
     return _crossref_record(json.loads(payload)["message"])
 
 
+def parse_crossref_search(payload: str) -> list[Record]:
+    return [_crossref_record(item) for item in json.loads(payload)["message"].get("items", [])]
+
+
 def _crossref_record(msg: dict) -> Record:
     years = []
     for key in ("issued", "published-print", "published-online", "published"):
@@ -132,6 +139,7 @@ class Lookup:
         self.http = http
         self.workers = workers
         self._cache: dict[tuple[str, str], Record | LookupFailed | None] = {}
+        self._found: dict[str, tuple[str, Record] | LookupFailed | None] = {}
         key = os.environ.get("NCBI_API_KEY")
         self._ncbi_key = f"&api_key={key}" if key else ""
 
@@ -201,6 +209,57 @@ class Lookup:
         for d, r in self._crossref_many(rest).items():
             self._cache[("doi", d)] = r
 
+    def find(self, ref: Reference) -> tuple[str, Record] | None:
+        """Search for a reference written out without an identifier: ("crossref" | "pubmed", record).
+
+        None when neither registry has a paper with that title. Raises LookupFailed when a search
+        failed and nothing was found, so a network error is never reported as "does not exist".
+        Searches run one at a time: Crossref allows one concurrent search per client.
+        """
+        if ref.context not in self._found:
+            try:
+                self._found[ref.context] = self._find(ref)
+            except LookupFailed as e:
+                self._found[ref.context] = e
+        value = self._found[ref.context]
+        if isinstance(value, LookupFailed):
+            raise value
+        return value
+
+    def _find(self, ref: Reference) -> tuple[str, Record] | None:
+        failed = None
+        for via, search in (("crossref", self._search_crossref), ("pubmed", self._search_pubmed)):
+            try:
+                hit = best_match(ref, search(ref))
+            except Exception as e:  # noqa: BLE001 - try the other registry before giving up
+                failed = LookupFailed(f"{via}: {type(e).__name__}: {e}")
+                continue
+            if hit:
+                return via, hit
+        if failed:
+            raise failed
+        return None
+
+    def _search_crossref(self, ref: Reference) -> list[Record]:
+        query = quote(ref.context[:300], safe="")
+        return parse_crossref_search(self.http(CROSSREF_SEARCH + query))
+
+    def _search_pubmed(self, ref: Reference) -> list[Record]:
+        # Punctuation such as ":" breaks PubMed's phrase search; words alone match the title field.
+        term = quote(f"{words(ref.title)}[ti]", safe="")
+        found = json.loads(
+            self.http(f"{EUTILS}/esearch.fcgi?db=pubmed&term={term}&retmode=json&retmax=5{self._ncbi_key}")
+        )
+        ids = found.get("esearchresult", {}).get("idlist", [])
+        if not ids:
+            return []
+        records = parse_pubmed(
+            self.http(f"{EUTILS}/efetch.fcgi?db=pubmed&id={','.join(ids)}&retmode=xml{self._ncbi_key}")
+        )
+        for pmid, record in records.items():
+            self._cache.setdefault(("pmid", pmid), record)
+        return list(records.values())
+
     def _doi_exists(self, doi: str) -> bool:
         try:
             handle = json.loads(self.http(f"https://doi.org/api/handles/{quote(doi, safe='/')}"))
@@ -256,3 +315,25 @@ class Lookup:
                     store(_crossref_url(d), json.dumps({"message": item}))
                 out[d] = _crossref_record(item)
         return out
+
+
+def best_match(ref: Reference, candidates: list[Record]) -> Record | None:
+    """The candidate whose title matches the one written in the text.
+
+    A partial title must agree on the year. A book must agree on the year and on the whole title: a
+    search for a book mostly finds reviews of it, titled "Thinking, Fast and Slow. New York: … 499 pages."
+    """
+    best = None
+    for c in candidates:
+        m = compare_titles(ref.title, c.title)
+        years = c.years or ([c.year] if c.year else [])
+        same_year = bool(ref.year and any(abs(ref.year - y) <= 1 for y in years))
+        if (m == "partial" or ref.book) and not same_year:
+            continue
+        if ref.book and title_ratio(ref.title, c.title or "") < 0.9:
+            continue
+        if m == "match":
+            return c
+        if m == "partial" and best is None:
+            best = c
+    return best

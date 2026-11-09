@@ -33,6 +33,14 @@ LABELS = {
         "web_quote_unknown": "Could not read the page text (e.g. a PDF); quoted text not checked: “{q}”",
         "web_quote_language": "Quote is in Chinese and the page is not, so it cannot be compared word for word: “{q}”",
         "failed": "Lookup failed, try again later ({e})",
+        "found": "No DOI or PMID in the text; found by title in {via}: {id}",
+        "not_found": "No paper with this title in Crossref or PubMed. It may not exist, or it may be a book, "
+        "a report, or a title worded differently from the original.",
+        "book": "Looks like a book; Crossref and PubMed list few books, so it was not found there: not checked",
+        "cjk": "Chinese-language reference: not checked yet (CNKI and Wanfang have no open API)",
+        "no_title": "No DOI or PMID, and the title could not be told apart: not checked",
+        "search_off": "No DOI or PMID; title search is off (--no-search): not checked",
+        "none": "No citations found.",
         "evidence": "Study type (as tagged by PubMed)",
         "disclaimer": "Automated check. It confirms that sources exist and match; it does not judge "
         "whether a claim is true and is not medical advice.",
@@ -61,6 +69,13 @@ LABELS = {
         "web_quote_unknown": "读不到页面文字（比如 PDF），引文未核对：「{q}」",
         "web_quote_language": "引文是中文，网页正文不是中文，无法逐字核对：「{q}」",
         "failed": "查询失败，请稍后重试（{e}）",
+        "found": "文中没有 DOI 或 PMID，按标题在 {via} 找到：{id}",
+        "not_found": "在 Crossref 和 PubMed 都没找到这个标题的文献：可能不存在，也可能是书、报告，或标题和原文写法不同。",
+        "book": "像是一本书。Crossref 和 PubMed 收录的书很少，没在里面找到，未核查",
+        "cjk": "中文文献暂时无法核查（知网、万方没有开放接口）",
+        "no_title": "没有 DOI 或 PMID，也认不出标题，未核查",
+        "search_off": "没有 DOI 或 PMID，按标题搜索已关闭（--no-search），未核查",
+        "none": "没有找到任何引用。",
         "evidence": "研究类型（PubMed 标注）",
         "disclaimer": "自动核查只确认出处存在且对得上，不判断说法本身是否正确，也不构成医疗建议。",
     },
@@ -93,9 +108,14 @@ def _problems(f: Finding, L: dict[str, str]) -> list[str]:
         return out
     if f.error:
         return [L["failed"].format(e=f.error)]
+    if f.note:
+        return [L[f.note]]
     if f.exists is False:
         return [L["missing"]]
     out = []
+    if f.found_via and f.record:
+        ident = f"doi:{f.record.doi}" if f.record.doi else f"pmid:{f.record.pmid}"
+        out.append(L["found"].format(via="Crossref" if f.found_via == "crossref" else "PubMed", id=ident))
     title = f.record.title if f.record else None
     if f.title_match == "mismatch":
         out.append(L["title_mismatch"].format(t=title))
@@ -113,12 +133,21 @@ def _problems(f: Finding, L: dict[str, str]) -> list[str]:
     return out
 
 
+def _label(ref) -> str:
+    if ref.kind != "text":
+        return f"`{ref.kind}:{ref.id}`"
+    shown = ref.title or ref.context
+    return "“" + (shown if len(shown) <= 90 else shown[:89] + "…") + "”"
+
+
 def to_markdown(findings: list[Finding], lang: str = "en") -> str:
     L = LABELS[lang]
     lines = [f"# {L['title']}", "", L["summary"].format(**summary(findings)), ""]
+    if not findings:
+        lines += [L["none"], ""]
     for f in findings:
         where = L["line"].format(n=f.ref.line) if lang == "zh" else f"{L['line']} {f.ref.line}"
-        lines.append(f"- **{L[f.status]}** · {where} · `{f.ref.kind}:{f.ref.id}`")
+        lines.append(f"- **{L[f.status]}** · {where} · {_label(f.ref)}")
         if f.record and f.record.title:
             lines.append(f"  - {f.record.title} ({f.record.year or '?'})")
         if f.evidence and f.evidence.key != "unknown":
@@ -154,6 +183,8 @@ def to_json(findings: list[Finding]) -> str:
             "quotes": [{"text": q, "found_in_abstract": ok} for q, ok in f.quotes],
             "evidence": f.evidence.key if f.evidence else None,
             "error": f.error,
+            "found_via": f.found_via,
+            "note": f.note,
             "web": None
             if f.web is None
             else {

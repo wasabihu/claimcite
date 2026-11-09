@@ -8,6 +8,10 @@ Supported citation forms:
 The text between two citations on the same line is treated as the description of the
 second one, e.g. ``Author (2020). Title. Journal：「quoted words」. <https://doi.org/...>``
 
+References written out without an identifier (``Smith J (2019). Title. Journal.``) are found in a
+reference-list section (``## References``, ``参考文献`` …) and in ``[1] …`` / ``[^1]: …`` entries anywhere, and
+are looked up by title. AI-invented citations usually look like this.
+
 Numbered citations work too: a quote in the body followed by ``[1]``, ``[^note]``, ``[1, 2]`` or ``[1-3]``
 is checked against the reference-list entry with that label (``[1] …``, ``1. …`` or ``[^note]: …``).
 """
@@ -46,6 +50,26 @@ INLINE_CODE_RE = re.compile(r"`[^`]*`")
 SENTENCE_END = re.compile(r"[。！？!?]|\.(?=\s)")
 
 _TRAILING = ".,;:!?"
+
+# A heading that starts a reference list: "## References", "**参考文献**", "Sources:" on its own line.
+REF_HEADING = re.compile(
+    r"^\s*(?:#{1,6}\s*)?(?:\*\*)?\s*(?:\d+[.、]?\s*)?"
+    r"(?:references?|bibliography|works cited|literature cited|cited literature|sources|citations"
+    r"|参考文献|参考资料|引用文献|文献|资料来源|引用来源|出处)"
+    r"\s*[:：]?\s*(?:\*\*)?\s*$",
+    re.IGNORECASE,
+)
+HEADING = re.compile(r"^\s*#{1,6}\s")
+LIST_MARK = re.compile(r"^\s*(?:[-*+]\s+|\[(?:\^?[\w-]+)\]:?\s+|\d{1,3}[.)]\s+)")
+ANY_YEAR = re.compile(r"(?<!\d)(1[89]\d{2}|20\d{2})(?!\d)")
+# Chinese national standard GB/T 7714: "作者. 题名[J]. 刊名, 2020, 52(3): 301-310."
+GBT_TITLE = re.compile(r"(?:^|[.。]\s*)([^.。\[\]]+?)\s*\[(?:[JMCDNRSPGZA]|EB)(?:/OL)?\]")
+# MLA: Smith, John. "Title of the Paper." Journal …
+MLA_TITLE = re.compile(r"[“\"]([^”\"]{8,}?)[.,]?[”\"]")
+# Harvard without the full stop: "Smith, J. (2019) Title. Journal"
+HARVARD_TITLE = re.compile(r"\((?:1[89]|20)\d{2}[a-z]?\)\s+([^.?!]{8,}[?!]?)")
+# Vancouver / PubMed style: "Hölzel BK, Carmody J, et al. Title. Journal. 2011;191(1):36-43."
+AUTHORS_END = re.compile(r"(?:\bet al|\b[A-Z]{1,3}|等)$")
 
 
 def _clean_id(raw: str) -> str:
@@ -90,8 +114,73 @@ def extract_references(text: str) -> list[Reference]:
             year, title, quotes, ctx = _describe(line[prev_end:start])
             refs.append(Reference(kind, ident, lineno, year, title, quotes, ctx))
             prev_end = end
+    refs += _text_references(text, {r.line for r in refs})
+    refs.sort(key=lambda r: r.line)
     _attach_numbered_quotes(text, refs)
     return refs
+
+
+def _text_references(text: str, lines_with_ids: set[int]) -> list[Reference]:
+    """Reference-list entries with no DOI, PMID or link: they can only be checked by title."""
+    out: list[Reference] = []
+    in_list = fenced = False
+    lines = text.splitlines()
+    for lineno, line in enumerate(lines, start=1):
+        if FENCE_RE.match(line):
+            fenced = not fenced
+            continue
+        if fenced:
+            continue
+        if REF_HEADING.match(line):
+            in_list = True
+            continue
+        if HEADING.match(line):
+            in_list = False
+            continue
+        if lineno in lines_with_ids or line.lstrip().startswith("|"):  # table rows are not entries
+            continue
+        nxt = lines[lineno] if lineno < len(lines) else ""
+        if lineno + 1 in lines_with_ids and nxt[:1].isspace() and not LIST_MARK.match(nxt):
+            continue  # the entry's DOI or link is on the indented line below it
+        labelled = bool(re.match(r"^\s*\[\^?[\w-]+\]:?\s", line))
+        if not (in_list or labelled):
+            continue
+        entry = LIST_MARK.sub("", line, count=1).replace("*", "").strip()
+        year_m = ANY_YEAR.search(entry)
+        if len(entry) < 20 or not year_m:
+            continue
+        stated_year, title, quotes, ctx = _describe(entry)
+        if not title:
+            title, quotes = _text_title(entry, quotes)
+        year = stated_year or int(year_m.group(1))
+        out.append(
+            Reference("text", ctx, lineno, year, title, quotes, ctx, book=_looks_like_book(entry, title))
+        )
+    return out
+
+
+def _looks_like_book(entry: str, title: str | None) -> bool:
+    """GB/T "[M]", or nothing but a publisher after the title: "Thinking, fast and slow. Farrar, Straus and Giroux." """
+    if re.search(r"\[M\]", entry):
+        return True
+    if not title or title not in entry:
+        return False
+    rest = ANY_YEAR.sub("", entry[entry.index(title) + len(title) :])
+    return not re.search(r"\d", rest)
+
+
+def _text_title(entry: str, quotes: list[str]) -> tuple[str | None, list[str]]:
+    if m := GBT_TITLE.search(entry):
+        return m.group(1).strip(), quotes
+    if m := MLA_TITLE.search(entry):
+        title = m.group(1).strip()
+        return title, [q for q in quotes if q.rstrip(".,") != title]
+    if m := HARVARD_TITLE.search(entry):
+        return m.group(1).strip(), quotes
+    parts = re.split(r"\.\s+", entry)
+    if len(parts) >= 3 and AUTHORS_END.search(parts[0].strip()):
+        return parts[1].strip(), quotes
+    return None, quotes
 
 
 def _labels(raw: str) -> list[str]:

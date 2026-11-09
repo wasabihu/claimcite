@@ -36,6 +36,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     c.add_argument("--no-cache", action="store_true", help="bypass the on-disk lookup cache for this run")
     c.add_argument("--no-web", action="store_true", help="do not fetch web pages; check DOIs and PMIDs only")
+    c.add_argument(
+        "--no-search",
+        action="store_true",
+        help="do not look up references that have no DOI or PMID by title (they stay not checked)",
+    )
     args = p.parse_args(argv)
 
     lookup = make_lookup(no_cache=args.no_cache)
@@ -43,7 +48,7 @@ def main(argv: list[str] | None = None) -> int:
     failed, reports = False, []
     for path in args.paths:
         text = sys.stdin.read() if path == "-" else Path(path).read_text(encoding="utf-8")
-        findings = check_text(text, lookup, web=not args.no_web)
+        findings = check_text(text, lookup, web=not args.no_web, search=not args.no_search)
         failed |= any(f.status in FAIL_ON[args.fail_on] for f in findings)
         if args.format == "json":
             reports.append({"path": path, **json.loads(to_json(findings))})

@@ -7,6 +7,11 @@
 - Crossref is asked for 20 DOIs per request, one request at a time, as its public pool requires
   (x-concurrency-limit: 1). Before, eight requests went out at once and some got HTTP 429. Each work is
   still cached on its own, so adding a citation does not refetch the others.
+- References with no DOI or PMID (`Smith J (2019). Title. Journal, 3, 1-9.`) in a reference list are searched by
+  title in Crossref, then PubMed. Before, they were skipped and the report said "0 ok · 0 warnings · 0 errors",
+  which looked like a clean pass. Not found is a warning; books and Chinese references stay not checked.
+  `--no-search` (Action input `search: "false"`) turns it off.
+- A document with no citations at all now says so.
 
 ## 0.1.0 (2026-11-09)
 

@@ -35,12 +35,21 @@ $ claimcite check examples/sample.md
 | Text in quotes (`"…"`, `“…”`, `「…」`) appears in the abstract | PubMed / Crossref abstract |
 | Study type: meta-analysis, RCT, observational, animal… | PubMed publication types and MeSH |
 | A web link is alive and contains the quoted text | fetch the page (respecting `robots.txt`), strip HTML, normalise whitespace |
+| A reference with no DOI or PMID exists | search the title in Crossref, then PubMed; then check it like any other paper |
 
 It reads Markdown or plain text and understands the common
 `Author (Year). Title. Journal: "quote". https://doi.org/…` pattern, plus `doi:…`, bare DOIs,
 `PMID: …` and PubMed links. Numbered citations work too: a quote in the text followed by `[1]`, `[^1]`,
 `[1, 2]` or `[1-3]` is checked against the matching entry in the reference list (`[1] …`, `1. …` or
-`[^1]: …`). Code blocks and inline code are skipped. A quote in Chinese is only compared with Chinese text: next to an English abstract or page it is
+`[^1]: …`).
+
+Most invented citations have no DOI: `Chen, L. (2021). A plausible title. Journal of Something, 14(2), 88–97.`
+Entries like that under a reference-list heading (`## References`, `参考文献`, `Sources` …), and `[1] …` or
+`[^1]: …` entries anywhere, are searched by title in Crossref and then PubMed. APA, Harvard, MLA, Vancouver and
+GB/T 7714 styles are understood. A paper that is found is checked like one with a DOI. One that neither registry
+has is a **warning**, not an error: it may not exist, or the title may be worded differently. Books (most are in
+neither registry) and Chinese-language references are left *not checked*. Searches run one a second (Crossref's
+limit), so 30 such references take about half a minute the first time. `--no-search` turns this off. Code blocks and inline code are skipped. A quote in Chinese is only compared with Chinese text: next to an English abstract or page it is
 noted as not comparable word for word, not reported as missing. Other web links are fetched (respecting `robots.txt`) and checked for
 availability and for the quoted text. A dead link or a missing quote is a **warning**, never an error —
 pages change and some sites block bots. When a page cannot be read the link stays *not checked*.
@@ -88,6 +97,7 @@ jobs:
           files: "docs/**/*.md"  # default: every Markdown file
           fail-on: error         # or: warning, never
           web: "true"            # "false" checks DOIs and PMIDs only
+          search: "true"         # "false" skips title search for references without a DOI
 ```
 
 The report also appears in the job summary. Runs on Linux and macOS runners.
@@ -112,6 +122,7 @@ several files on the command line: `claimcite check docs/*.md`.
 Each item is a self-contained piece of work. Pick one and open an issue to say you're on it.
 
 - [x] **Web links**: check that the page is alive and contains the quoted text
+- [x] **References without identifiers**: find them by title (Crossref, PubMed)
 - [ ] **More registries**: OpenAlex, Semantic Scholar, arXiv, CNKI/Wanfang metadata, DataCite
 - [ ] **Retractions**: flag retracted papers (Crossref / Retraction Watch data)
 - [ ] **Full text**: look for quotes in open-access full text (PubMed Central, Europe PMC), not only abstracts
