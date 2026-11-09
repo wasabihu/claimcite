@@ -7,13 +7,14 @@ from dataclasses import dataclass, field
 class Reference:
     """One citation as written in the document."""
 
-    kind: str  # "doi" | "pmid" | "url"
+    kind: str  # "doi" | "pmid" | "url" | "text" (written out, no identifier: looked up by title)
     id: str  # normalised DOI (lower case), PMID digits, or the URL
     line: int
     year: int | None = None
     title: str | None = None  # title as the author wrote it
     quotes: list[str] = field(default_factory=list)  # text the author says comes from the source
     context: str = ""  # the citation text this was parsed from
+    book: bool = False  # a written-out reference that looks like a book (no volume or pages)
 
 
 @dataclass
@@ -62,3 +63,5 @@ class Finding:
     evidence: Evidence | None = None
     error: str | None = None  # set when a registry could not be reached
     web: WebResult | None = None
+    found_via: str | None = None  # "crossref" | "pubmed": a written-out reference found by title search
+    note: str | None = None  # not_found | book | cjk | no_title | search_off (written-out references only)

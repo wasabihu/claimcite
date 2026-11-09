@@ -17,6 +17,9 @@ inputs:
   web:
     description: Also fetch ordinary web links and look for the quoted text (true or false).
     default: "true"
+  search:
+    description: Search Crossref and PubMed by title for references that have no DOI or PMID (true or false).
+    default: "true"
 runs:
   using: composite
   steps:
@@ -32,6 +35,7 @@ runs:
         CLAIMCITE_FAIL_ON: ${{ inputs.fail-on }}
         CLAIMCITE_LANG: ${{ inputs.lang }}
         CLAIMCITE_WEB: ${{ inputs.web }}
+        CLAIMCITE_SEARCH: ${{ inputs.search }}
       run: |
         set -o pipefail
         shopt -s globstar nullglob
@@ -40,4 +44,5 @@ runs:
         if [ ${#files[@]} -eq 0 ]; then echo "claimcite: no files match '$CLAIMCITE_FILES'"; exit 0; fi
         args=(--fail-on "$CLAIMCITE_FAIL_ON" --lang "$CLAIMCITE_LANG")
         [ "$CLAIMCITE_WEB" = "false" ] && args+=(--no-web)
+        [ "$CLAIMCITE_SEARCH" = "false" ] && args+=(--no-search)
         "$RUNNER_TEMP/claimcite/bin/claimcite" check "${files[@]}" "${args[@]}" | tee -a "$GITHUB_STEP_SUMMARY"

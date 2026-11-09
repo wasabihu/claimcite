@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from difflib import SequenceMatcher
 
 CJK = re.compile(r"[\u3400-\u9fff]")
 ELLIPSIS = re.compile(r"\s*(?:…+|\.\.\.+)\s*")
@@ -36,3 +37,23 @@ def quote_found(quote: str, haystack: str | None) -> bool | None:
     hay = letters(haystack)
     parts = [letters(part) for part in ELLIPSIS.split(quote)]
     return all(part in hay for part in parts if part)
+
+
+def compare_titles(stated: str | None, actual: str | None) -> str:
+    if not stated:
+        return "not_stated"
+    if not actual:
+        return "unknown"
+    if CJK.search(stated) and not CJK.search(actual):
+        return "not_comparable"
+    a, b = words(stated), words(actual)
+    ratio = title_ratio(stated, actual)
+    if ratio >= 0.9 or (len(a) > 20 and (a in b or b in a)):
+        return "match"
+    if ratio >= 0.6:
+        return "partial"
+    return "mismatch"
+
+
+def title_ratio(a: str, b: str) -> float:
+    return SequenceMatcher(None, words(a), words(b)).ratio()
