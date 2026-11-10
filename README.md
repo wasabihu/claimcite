@@ -54,7 +54,7 @@ noted as not comparable word for word, not reported as missing. Other web links 
 availability and for the quoted text. A dead link or a missing quote is a **warning**, never an error —
 pages change and some sites block bots. When a page cannot be read the link stays *not checked*.
 
-**What it does not do (yet):** decide whether a source *supports* a claim. That needs a language model and a
+**What it does not do (yet):** check paraphrases. Only text in quotation marks is compared with the source, word for word; a sentence that restates a source without quotes is not extracted or checked. It also cannot decide whether a source *supports* a claim. That needs a language model and a
 labelled test set. See the roadmap. claimcite only confirms that sources exist and match what the text says
 about them. It is not medical advice.
 
