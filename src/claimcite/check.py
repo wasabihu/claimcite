@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from concurrent.futures import ThreadPoolExecutor
 
 from .evidence import UNKNOWN, evidence_level
@@ -12,6 +13,11 @@ from .text import CJK, compare_titles, quote_found
 from .web import check_page
 
 __all__ = ["check_reference", "check_text", "compare_titles", "quote_found"]
+
+_RETRACTED_PREFIX = re.compile(
+    r"^(?:\[?\s*retracted(?:\s+article)?\s*\]?\s*[:—–-]\s*|retracted\s*:\s*)",
+    re.IGNORECASE,
+)
 
 
 def check_reference(ref: Reference, lookup: Lookup, web: bool = True, search: bool = True) -> Finding:
@@ -29,7 +35,12 @@ def check_reference(ref: Reference, lookup: Lookup, web: bool = True, search: bo
         return Finding(ref, status=status, web=result)
 
     try:
-        record = lookup.doi(ref.id) if ref.kind == "doi" else lookup.pmid(ref.id)
+        if ref.kind == "doi":
+            record = lookup.doi(ref.id)
+        elif ref.kind == "pmid":
+            record = lookup.pmid(ref.id)
+        else:
+            record = lookup.arxiv(ref.id)
     except LookupFailed as e:
         return Finding(ref, status="unchecked", error=str(e))
     if record is None:
@@ -69,6 +80,12 @@ def _check_text_reference(ref: Reference, lookup: Lookup, search: bool) -> Findi
 def _compare(f: Finding) -> Finding:
     ref, record = f.ref, f.record
     f.title_match = compare_titles(ref.title, record.title)
+    f.retracted = bool(record.retracted)
+    if f.retracted and record.title and f.title_match in ("partial", "mismatch"):
+        # Publishers prepend "RETRACTED: " to the registered title after retraction.
+        cleaned_title = _RETRACTED_PREFIX.sub("", record.title).strip()
+        if cleaned_title and cleaned_title != record.title:
+            f.title_match = compare_titles(ref.title, cleaned_title)
     years = record.years or ([record.year] if record.year else [])
     if ref.year and years:
         # Papers have online, print and issue years; any of them, give or take one, is fine.
@@ -81,7 +98,7 @@ def _compare(f: Finding) -> Finding:
         else UNKNOWN
     )
 
-    if f.title_match == "mismatch":
+    if f.retracted or f.title_match == "mismatch":
         f.status = "error"
     elif f.title_match == "partial" or f.year_match is False or any(ok is False for _, ok in f.quotes):
         f.status = "warning"
@@ -95,6 +112,7 @@ def check_text(
     refs = extract_references(text)
     dois = [r.id for r in refs if r.kind == "doi"]
     pmids = [r.id for r in refs if r.kind == "pmid"]
+    arxivs = [r.id for r in refs if r.kind == "arxiv"]
     if search:
         # One search at a time (Crossref's limit); then fetch every paper found along with the rest.
         for r in refs:
@@ -105,7 +123,7 @@ def check_text(
                     continue
                 if hit and hit[1].doi:
                     dois.append(hit[1].doi)
-    lookup.prefetch(dois=dois, pmids=pmids)
+    lookup.prefetch(dois=dois, pmids=pmids, arxivs=arxivs)
     # Registry lookups are already batched above; this mainly runs web-page fetches side by side.
     with ThreadPoolExecutor(max_workers=lookup.workers) as pool:
         return list(pool.map(lambda ref: check_reference(ref, lookup, web, search), refs))

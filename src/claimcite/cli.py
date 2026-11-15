@@ -56,13 +56,23 @@ def main(argv: list[str] | None = None) -> int:
         help="exit with 1 when any finding has this status (default: error)",
     )
     c.add_argument("--no-cache", action="store_true", help="bypass the on-disk lookup cache for this run")
-    c.add_argument("--no-web", action="store_true", help="do not fetch web pages; check DOIs and PMIDs only")
+    c.add_argument(
+        "--no-web",
+        action="store_true",
+        help="do not fetch web pages; check DOIs, PMIDs and arXiv IDs only",
+    )
     c.add_argument(
         "--no-search",
         action="store_true",
         help="do not look up references that have no DOI or PMID by title (they stay not checked)",
     )
+    m = sub.add_parser("mcp", help="run as a Model Context Protocol (MCP) server over stdio")
+    m.add_argument("--no-cache", action="store_true", help="bypass the on-disk lookup cache")
     args = p.parse_args(argv)
+    if args.command == "mcp":
+        from .mcp import run_mcp_server
+
+        return run_mcp_server(no_cache=args.no_cache)
 
     texts = {}
     for given in args.paths:

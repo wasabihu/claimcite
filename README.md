@@ -29,10 +29,11 @@ $ claimcite check examples/sample.md
 
 | Check | How |
 |---|---|
-| The DOI / PMID exists | doi.org handle API (every registrar), PubMed |
-| The title written in the text matches the identifier | PubMed, then Crossref; fuzzy match |
-| The year matches (±1 for online-first vs print) | same |
-| Text in quotes (`"…"`, `“…”`, `「…」`) appears in the abstract | PubMed / Crossref abstract |
+| The DOI / PMID / arXiv ID exists | doi.org handle API, PubMed, arXiv Atom API (including `10.48550/arXiv.*`) |
+| The paper has not been retracted | PubMed `Retracted Publication` / `RetractionIn`, Crossref `updated-by` & `relation.is-retracted-by` |
+| The title written in the text matches the identifier | PubMed, Crossref, or arXiv; fuzzy match (ignoring publisher `RETRACTED:` prefix) |
+| The year matches (±1 for online-first vs print) | same (published & updated years for arXiv) |
+| Text in quotes (`"…"`, `“…”`, `「…」`) appears in the abstract | PubMed / Crossref / arXiv abstract |
 | Study type: meta-analysis, RCT, observational, animal… | PubMed publication types and MeSH |
 | A web link is alive and contains the quoted text | fetch the page (respecting `robots.txt`), strip HTML, normalise whitespace |
 | A reference with no DOI or PMID exists | search the title in Crossref, then PubMed; then check it like any other paper |
@@ -117,23 +118,54 @@ repos:
 Every changed Markdown file is checked; the commit stops when a citation has an error. You can also pass
 several files on the command line: `claimcite check docs/*.md`, or a whole folder: `claimcite check docs/`.
 
+### MCP server & Agent Skill
+
+`claimcite` ships with a zero-dependency stdio [Model Context Protocol](https://modelcontextprotocol.io/) server (`claimcite mcp`) exposing `check_citations` and `check_files`:
+
+```json
+{
+  "mcpServers": {
+    "claimcite": {
+      "command": "uvx",
+      "args": ["claimcite", "mcp"]
+    }
+  }
+}
+```
+
+A ready-to-use Agent Skill guide lives in [`skills/claimcite/SKILL.md`](skills/claimcite/SKILL.md).
+
+### Offline benchmark
+
+Run the 20-case fixture-backed benchmark locally (zero network calls):
+
+```bash
+uv run python benchmarks/run.py
+```
+
+See [`benchmarks/README.md`](benchmarks/README.md) for what each category covers.
+
 ## Roadmap
 
 Each item is a self-contained piece of work. Pick one and open an issue to say you're on it.
 
 - [x] **Web links**: check that the page is alive and contains the quoted text
 - [x] **References without identifiers**: find them by title (Crossref, PubMed)
-- [ ] **More registries**: OpenAlex, Semantic Scholar, arXiv, CNKI/Wanfang metadata, DataCite
-- [ ] **Retractions**: flag retracted papers (Crossref / Retraction Watch data)
+- [x] **Retractions**: flag retracted papers via Crossref (`updated-by` / `relation`) and PubMed (`Retracted Publication`)
+- [ ] **More registries**: OpenAlex, Semantic Scholar, CNKI/Wanfang metadata (`arXiv` and DataCite `10.48550/arXiv.*` are supported)
 - [ ] **Full text**: look for quotes in open-access full text (PubMed Central, Europe PMC), not only abstracts
 - [ ] **Support check**: does the source support the sentence? Pluggable LLM judge, local models first
-- [ ] **Benchmark**: a public, labelled set of real and fabricated citations to measure every check
+- [x] **Benchmark**: offline 20-case fixture benchmark in [`benchmarks/`](benchmarks/README.md) (more public corpora welcome)
 - [x] **Numbered citations**: `[1]`, `[1-3]` and footnotes `[^1]` linked to the reference list
 - [ ] **More input formats**: BibTeX, Word / PDF input
-- [x] **Integrations**: GitHub Action, pre-commit hook
+- [x] **Integrations**: GitHub Action, pre-commit hook, stdio MCP server (`claimcite mcp`), Agent Skill
 - [ ] Browser extension
 - [x] **Caching** between runs (30-day on-disk cache, `--no-cache` to bypass)
 - [ ] Faster batch lookups
+
+## Related project
+
+Looking to build a minimal, audited AI agent runtime in Python? Check out our sister project: **[cairnkit](https://github.com/wasabihu/cairnkit)** (includes a citation-verifying tool example wired cleanly with `claimcite`).
 
 ## Contributing
 

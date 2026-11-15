@@ -41,6 +41,8 @@ LABELS = {
         "no_title": "No DOI or PMID, and the title could not be told apart: not checked",
         "search_off": "No DOI or PMID; title search is off (--no-search): not checked",
         "none": "No citations found.",
+        "retracted": "This paper has been retracted",
+        "retracted_by": "This paper has been retracted (notice: doi:{d})",
         "evidence": "Study type (as tagged by PubMed)",
         "disclaimer": "Automated check. It confirms that sources exist and match; it does not judge "
         "whether a claim is true and is not medical advice.",
@@ -76,6 +78,8 @@ LABELS = {
         "no_title": "没有 DOI 或 PMID，也认不出标题，未核查",
         "search_off": "没有 DOI 或 PMID，按标题搜索已关闭（--no-search），未核查",
         "none": "没有找到任何引用。",
+        "retracted": "该论文已被撤稿",
+        "retracted_by": "该论文已被撤稿（撤稿声明：doi:{d}）",
         "evidence": "研究类型（PubMed 标注）",
         "disclaimer": "自动核查只确认出处存在且对得上，不判断说法本身是否正确，也不构成医疗建议。",
     },
@@ -116,6 +120,9 @@ def _problems(f: Finding, L: dict[str, str]) -> list[str]:
     if f.found_via and f.record:
         ident = f"doi:{f.record.doi}" if f.record.doi else f"pmid:{f.record.pmid}"
         out.append(L["found"].format(via="Crossref" if f.found_via == "crossref" else "PubMed", id=ident))
+    if f.retracted:
+        r_doi = f.record.retraction_doi if f.record else None
+        out.append(L["retracted_by"].format(d=r_doi) if r_doi else L["retracted"])
     title = f.record.title if f.record else None
     if f.title_match == "mismatch":
         out.append(L["title_mismatch"].format(t=title))
@@ -167,6 +174,7 @@ def to_json(findings: list[Finding]) -> str:
             "line": f.ref.line,
             "status": f.status,
             "exists": f.exists,
+            "retracted": f.retracted,
             "stated": {"title": f.ref.title, "year": f.ref.year, "quotes": f.ref.quotes},
             "registry": None
             if r is None
@@ -176,6 +184,9 @@ def to_json(findings: list[Finding]) -> str:
                 "year": r.year,
                 "doi": r.doi,
                 "pmid": r.pmid,
+                "arxiv": r.arxiv,
+                "retracted": r.retracted,
+                "retraction_doi": r.retraction_doi,
                 "publication_types": r.pub_types,
             },
             "title_match": f.title_match,

@@ -3,6 +3,7 @@
 Supported citation forms:
   - DOI: https://doi.org/10.x/y, doi:10.x/y, or a bare 10.x/y
   - PMID: "PMID: 123" or https://pubmed.ncbi.nlm.nih.gov/123
+  - arXiv: "arXiv:1706.03762" or https://arxiv.org/abs/1706.03762
   - any other http(s) link (fetched and checked for availability and quoted text)
 
 The text between two citations on the same line is treated as the description of the
@@ -27,6 +28,13 @@ _ASCII_TOKEN = r"[^\s<>\"'\u0080-\uffff]+"
 DOI_RE = re.compile(r"(?i:https?://(?:dx\.)?doi\.org/|\bdoi:\s*)?\b(10\.\d{4,9}/" + _ASCII_TOKEN + ")")
 PMID_RE = re.compile(
     r"\bPMID:?\s*(\d{1,9})\b|https?://pubmed\.ncbi\.nlm\.nih\.gov/(\d{1,9})/?", re.IGNORECASE
+)
+_ARXIV_ID = r"(?:\d{4}\.\d{4,5}|[a-z-]+(?:\.[a-z]{2})?/\d{7})(?:v\d+)?"
+ARXIV_RE = re.compile(
+    r"(?:\barxiv:\s*|https?://(?:export\.)?arxiv\.org/(?:abs|pdf|html)/)("
+    + _ARXIV_ID
+    + r")(?:/|\.pdf)?(?!\.\d|[\w-])",
+    re.IGNORECASE,
 )
 URL_RE = re.compile(r"https?://" + _ASCII_TOKEN)
 # A publisher link carries the DOI followed by the name of the page: .../10.3389/fpsyg.2021.744551/full
@@ -84,6 +92,10 @@ def _clean_id(raw: str) -> str:
     return raw
 
 
+def _clean_arxiv(raw: str) -> str:
+    return re.sub(r"v\d+$", "", raw.strip().lower())
+
+
 def _inside_link(line: str, pos: int) -> bool:
     """True when the DOI at pos is part of another site's address, not written out on its own."""
     return any(m.start() < pos < m.end() for m in URL_RE.finditer(line))
@@ -118,6 +130,9 @@ def extract_references(text: str) -> list[Reference]:
         for m in PMID_RE.finditer(line):
             if not any(s <= m.start() < e for s, e, *_ in hits):
                 hits.append((m.start(), m.end(), "pmid", m.group(1) or m.group(2)))
+        for m in ARXIV_RE.finditer(line):
+            if not any(s <= m.start() < e or m.start() <= s < m.end() for s, e, *_ in hits):
+                hits.append((m.start(), m.end(), "arxiv", _clean_arxiv(m.group(1))))
         for m in URL_RE.finditer(line):
             if not any(s <= m.start() < e or m.start() <= s < m.end() for s, e, *_ in hits):
                 hits.append((m.start(), m.end(), "url", _clean_id(m.group(0))))

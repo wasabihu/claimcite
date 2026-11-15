@@ -7,8 +7,8 @@ from dataclasses import dataclass, field
 class Reference:
     """One citation as written in the document."""
 
-    kind: str  # "doi" | "pmid" | "url" | "text" (written out, no identifier: looked up by title)
-    id: str  # normalised DOI (lower case), PMID digits, or the URL
+    kind: str  # "doi" | "pmid" | "arxiv" | "url" | "text" (no identifier: looked up by title)
+    id: str  # normalised DOI (lower case), PMID digits, bare arXiv ID, or the URL
     line: int
     year: int | None = None
     title: str | None = None  # title as the author wrote it
@@ -27,10 +27,13 @@ class Record:
     years: list[int] = field(default_factory=list)  # every known publication year (online, print, issue)
     doi: str | None = None
     pmid: str | None = None
+    arxiv: str | None = None
     abstract: str | None = None
     pub_types: list[str] = field(default_factory=list)
     humans: bool = False
     animals: bool = False
+    retracted: bool = False
+    retraction_doi: str | None = None
 
 
 @dataclass(frozen=True)
@@ -56,6 +59,7 @@ class Finding:
     ref: Reference
     status: str  # "ok" | "warning" | "error" | "unchecked"
     exists: bool | None = None
+    retracted: bool = False
     record: Record | None = None
     title_match: str = "not_stated"  # match | partial | mismatch | not_stated | not_comparable | unknown
     year_match: bool | None = None

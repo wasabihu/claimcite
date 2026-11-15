@@ -1,8 +1,9 @@
 """Look identifiers up in public registries.
 
 - doi.org handle API: does the DOI exist at all (any registrar)?
-- PubMed E-utilities: title, year, abstract, publication types (biomedical papers)
-- Crossref: title and year for DOIs that are not in PubMed
+- PubMed E-utilities: title, year, abstract, publication types, retractions
+- Crossref: title, year and retraction notices for DOIs that are not in PubMed
+- arXiv Atom API: title, publication year and abstract for arXiv preprints and 10.48550 DOIs
 - Title search (Crossref, then PubMed) for references written out without a DOI or PMID
 """
 
@@ -15,6 +16,7 @@ import re
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from urllib.error import HTTPError
 from urllib.parse import quote
 
@@ -24,6 +26,10 @@ from .text import compare_titles, title_ratio, words
 
 EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 CROSSREF_SEARCH = "https://api.crossref.org/works?rows=5&select=DOI,title,issued,published-print,published-online&query.bibliographic="
+ARXIV_API = "https://export.arxiv.org/api/query?id_list="
+_ATOM_NS = "{http://www.w3.org/2005/Atom}"
+_ARXIV_NS = "{http://arxiv.org/schemas/atom}"
+_DOI_IN_TEXT = re.compile(r"""\b(10\.\d{4,9}/[^\s<>"']+)""")
 _TAG = re.compile(r"<[^>]+>")
 
 
@@ -55,6 +61,17 @@ def parse_pubmed(xml: str) -> dict[str, Record]:
         ) or next((e.text for e in art.iter("ELocationID") if e.get("EIdType") == "doi"), None)
         abstract = " ".join(filter(None, (_text(a) for a in art.iter("AbstractText")))) or None
         mesh = {d.text for d in art.iter("DescriptorName")}
+        pub_types = [p.text for p in art.iter("PublicationType") if p.text]
+        retracted = "Retracted Publication" in pub_types
+        retraction_doi = None
+        for cc in art.iter("CommentsCorrections"):
+            if cc.get("RefType") == "RetractionIn":
+                src_text = cc.findtext("RefSource") or ""
+                if m := _DOI_IN_TEXT.search(src_text):
+                    cand = m.group(1).rstrip(".,;:")
+                    while cand.endswith(")") and cand.count(")") > cand.count("("):
+                        cand = cand[:-1].rstrip(".,;:")
+                    retraction_doi = cand.lower()
         out[pmid] = Record(
             source="pubmed",
             title=_text(art.find(".//Article/ArticleTitle")),
@@ -63,9 +80,11 @@ def parse_pubmed(xml: str) -> dict[str, Record]:
             doi=doi.lower() if doi else None,
             pmid=pmid,
             abstract=abstract,
-            pub_types=[p.text for p in art.iter("PublicationType") if p.text],
+            pub_types=pub_types,
             humans="Humans" in mesh,
             animals="Animals" in mesh,
+            retracted=retracted,
+            retraction_doi=retraction_doi,
         )
     return out
 
@@ -95,6 +114,20 @@ def _crossref_record(msg: dict) -> Record:
         y = ((msg.get(key) or {}).get("date-parts") or [[None]])[0][0]
         if y and y not in years:
             years.append(y)
+    # Crossref records retractions on the retracted paper via `updated-by` and
+    # `relation.is-retracted-by` (`update-to` sits on the retraction notice itself).
+    retracted = False
+    retraction_doi = None
+    for upd in msg.get("updated-by") or []:
+        if str(upd.get("type", "")).lower() == "retraction":
+            retracted = True
+            retraction_doi = (upd.get("DOI") or upd.get("doi") or "").lower() or retraction_doi
+    rel = msg.get("relation") or {}
+    for entry in rel.get("is-retracted-by") or []:
+        retracted = True
+        ident = (entry.get("id") or entry.get("DOI") or entry.get("doi") or "").lower()
+        if ident and (entry.get("id-type") == "doi" or ident.startswith("10.")):
+            retraction_doi = ident or retraction_doi
     return Record(
         source="crossref",
         title=clean_markup((msg.get("title") or [None])[0]),
@@ -102,11 +135,57 @@ def _crossref_record(msg: dict) -> Record:
         years=years,
         doi=(msg.get("DOI") or "").lower() or None,
         abstract=clean_markup(msg.get("abstract")),
+        retracted=retracted,
+        retraction_doi=retraction_doi,
     )
 
 
 def _crossref_url(doi: str) -> str:
     return f"https://api.crossref.org/works/{quote(doi, safe='/')}"
+
+
+def _arxiv_url(arxiv_id: str) -> str:
+    return f"{ARXIV_API}{quote(arxiv_id, safe='/')}&max_results=1"
+
+
+def parse_arxiv(xml: str) -> dict[str, Record]:
+    out: dict[str, Record] = {}
+    root = ET.fromstring(xml)
+    for entry in root.findall(f"{_ATOM_NS}entry"):
+        entry_id = (entry.findtext(f"{_ATOM_NS}id") or "").strip()
+        if "/abs/" not in entry_id or "/api/errors" in entry_id:
+            continue
+        aid = re.sub(r"v\d+$", "", entry_id.split("/abs/", 1)[1]).lower()
+        years = []
+        for tag in (f"{_ATOM_NS}published", f"{_ATOM_NS}updated"):
+            raw = (entry.findtext(tag) or "").strip()
+            if len(raw) >= 4 and raw[:4].isdigit() and int(raw[:4]) not in years:
+                years.append(int(raw[:4]))
+        doi_raw = (entry.findtext(f"{_ARXIV_NS}doi") or "").strip().lower() or None
+        out[aid] = Record(
+            source="arxiv",
+            title=_text(entry.find(f"{_ATOM_NS}title")),
+            year=years[0] if years else None,
+            years=years,
+            doi=doi_raw,
+            arxiv=aid,
+            abstract=_text(entry.find(f"{_ATOM_NS}summary")),
+        )
+    return out
+
+
+def _cache_arxiv_entries(xml: str, store: Callable[[str, str], None]) -> None:
+    root = ET.fromstring(xml)
+    ET.register_namespace("", "http://www.w3.org/2005/Atom")
+    ET.register_namespace("arxiv", "http://arxiv.org/schemas/atom")
+    for entry in root.findall(f"{_ATOM_NS}entry"):
+        entry_id = (entry.findtext(f"{_ATOM_NS}id") or "").strip()
+        if "/abs/" not in entry_id or "/api/errors" in entry_id:
+            continue
+        aid = re.sub(r"v\d+$", "", entry_id.split("/abs/", 1)[1]).lower()
+        feed = ET.Element(f"{_ATOM_NS}feed")
+        feed.append(entry)
+        store(_arxiv_url(aid), ET.tostring(feed, encoding="unicode"))
 
 
 class LookupFailed(Exception):
@@ -149,18 +228,23 @@ class Lookup:
     def pmid(self, pmid: str) -> Record | None:
         return self._get("pmid", pmid)
 
+    def arxiv(self, arxiv_id: str) -> Record | None:
+        return self._get("arxiv", arxiv_id)
+
     def _get(self, kind: str, ident: str) -> Record | None:
         if (kind, ident) not in self._cache:
-            self.prefetch(**{f"{kind}s": [ident]})
+            arg = {"doi": "dois", "pmid": "pmids", "arxiv": "arxivs"}[kind]
+            self.prefetch(**{arg: [ident]})
         value = self._cache[(kind, ident)]
         if isinstance(value, LookupFailed):
             raise value
         return value
 
-    def prefetch(self, dois: list[str] = (), pmids: list[str] = ()) -> None:
+    def prefetch(self, dois: list[str] = (), pmids: list[str] = (), arxivs: list[str] = ()) -> None:
         dois = [d for d in dict.fromkeys(dois) if ("doi", d) not in self._cache]
         pmids = [p for p in dict.fromkeys(pmids) if ("pmid", p) not in self._cache]
-        if not dois and not pmids:
+        arxivs = [a for a in dict.fromkeys(arxivs) if ("arxiv", a) not in self._cache]
+        if not dois and not pmids and not arxivs:
             return
 
         # 1. Does each DOI exist at all? doi.org knows every registrar.
@@ -173,12 +257,33 @@ class Lookup:
             else:
                 self._cache[("doi", d)] = e if isinstance(e, LookupFailed) else None
 
+        # Route DataCite arXiv DOIs (10.48550/arXiv.*) straight to the arXiv API.
+        arxiv_dois = {
+            d: re.sub(r"v\d+$", "", d.removeprefix("10.48550/arxiv."))
+            for d in live
+            if d.startswith("10.48550/arxiv.")
+        }
+        regular_live = [d for d in live if d not in arxiv_dois]
+        arxiv_todo = list(
+            dict.fromkeys([*arxivs, *(a for a in arxiv_dois.values() if ("arxiv", a) not in self._cache)])
+        )
+        for a, r in self._arxiv_many(arxiv_todo).items():
+            self._cache[("arxiv", a)] = r
+        for d, aid in arxiv_dois.items():
+            rec = self._cache[("arxiv", aid)]
+            if isinstance(rec, LookupFailed):
+                self._cache[("doi", d)] = rec
+            elif rec is None:
+                self._cache[("doi", d)] = Record(source="doi.org", doi=d)
+            else:
+                self._cache[("doi", d)] = replace(rec, doi=rec.doi or d)
+
         # 2. PubMed, in batches: DOIs -> PMIDs, then one efetch for all PMIDs.
         records: dict[str, Record] = {}
         pubmed_error = None
         try:
             ids = list(pmids)
-            for chunk in _chunks(live, 40):
+            for chunk in _chunks(regular_live, 40):
                 term = quote(" OR ".join(f"{d}[doi]" for d in chunk), safe="")
                 found = json.loads(
                     self.http(
@@ -200,8 +305,8 @@ class Lookup:
         for p in pmids:
             self._cache[("pmid", p)] = records.get(p) if pubmed_error is None else pubmed_error
         by_doi = {r.doi: r for r in records.values() if r.doi}
-        rest = [d for d in live if d not in by_doi]
-        for d in live:
+        rest = [d for d in regular_live if d not in by_doi]
+        for d in regular_live:
             if d in by_doi:
                 self._cache[("doi", d)] = by_doi[d]
 
@@ -314,6 +419,33 @@ class Lookup:
                 if store:
                     store(_crossref_url(d), json.dumps({"message": item}))
                 out[d] = _crossref_record(item)
+        return out
+
+    def _arxiv_many(self, arxiv_ids: list[str]) -> dict[str, Record | LookupFailed | None]:
+        cached = getattr(self.http, "get", None)
+        store = getattr(self.http, "put", None)
+        out: dict[str, Record | LookupFailed | None] = {}
+        todo = []
+        for aid in arxiv_ids:
+            body = cached(_arxiv_url(aid)) if cached else None
+            if body is not None:
+                parsed = _safe(parse_arxiv)(body)
+                out[aid] = parsed if isinstance(parsed, LookupFailed) else parsed.get(aid)
+            else:
+                todo.append(aid)
+        for chunk in _chunks(todo, 40):
+            id_list = ",".join(quote(a, safe="/") for a in chunk)
+            url = f"{ARXIV_API}{id_list}&max_results={len(chunk)}"
+            try:
+                body = self.http(url)
+                parsed = parse_arxiv(body)
+            except Exception as e:  # noqa: BLE001
+                out.update(dict.fromkeys(chunk, LookupFailed(f"arXiv: {type(e).__name__}: {e}")))
+                continue
+            if store and parsed:
+                _cache_arxiv_entries(body, store)
+            for aid in chunk:
+                out[aid] = parsed.get(aid)
         return out
 
 
