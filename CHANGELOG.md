@@ -1,11 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 (2026-11-15)
 
 - **Retraction detection**: flag retracted papers via PubMed (`Retracted Publication` / `RetractionIn`) and Crossref (`updated-by` / `relation.is-retracted-by`), reporting the retraction notice DOI when available without flagging retraction notices themselves.
 - **arXiv & DataCite `10.48550/arXiv.*` support**: extract `arXiv:YYMM.NNNNN`, legacy archive IDs, and `arxiv.org/abs|pdf|html` URLs; verify titles, publication/update years, and abstracts via batched `export.arxiv.org` Atom queries with per-ID caching and a 3 s minimum request interval.
 - **Zero-dependency MCP server & Agent Skill**: added `claimcite mcp` over stdio (supporting both newline-delimited JSON-RPC and `Content-Length` framing, exposing `check_citations` and `check_files`) plus [`skills/claimcite/SKILL.md`](skills/claimcite/SKILL.md).
 - **20-case offline benchmark**: added [`benchmarks/`](benchmarks/README.md) (`benchmarks/cases.jsonl` and `benchmarks/run.py`) backed by recorded real fixtures in [`tests/fixtures/`](tests/fixtures/).
+- **Scope clarity**: document explicitly that unquoted paraphrases are not checked.
 
 ## 0.2.1 (2026-11-09)
 
