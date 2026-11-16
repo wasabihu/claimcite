@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>claimcite — Zero-dependency citation audit CLI &amp; MCP server</title>
+  <meta name="description" content="Verify every citation in a document against doi.org, Crossref, PubMed, and arXiv. Catch fabricated DOIs, retracted papers, and misquoted text. Zero runtime dependencies.">
+  <meta property="og:title" content="claimcite — Verify every citation before it ships">
+  <meta property="og:description" content="Zero-dependency Python CLI &amp; stdio MCP server for checking DOIs, PMIDs, arXiv IDs, retractions, and quoted text.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://wasabihu.github.io/claimcite/">
+  <style>
+    :root {
+      --bg: #faf8f5;
+      --surface: #ffffff;
+      --surface-alt: #f3efe8;
+      --ink: #16181d;
+      --muted: #5a606d;
+      --line: #e4dfd5;
+      --accent: #0f766e;
+      --accent-soft: #e6f4f1;
+      --term-bg: #0f172a;
+      --term-ink: #e2e8f0;
+      --term-muted: #94a3b8;
+      --ok: #10b981;
+      --warn: #f59e0b;
+      --err: #ef4444;
+      --radius: 12px;
+      --max: 1040px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .wrap {
+      max-width: var(--max);
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* Header */
+    header {
+      border-bottom: 1px solid var(--line);
+      background: rgba(250, 248, 245, 0.9);
+      backdrop-filter: blur(8px);
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 60px;
+      gap: 16px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 1.05rem;
+      color: var(--ink);
+      letter-spacing: -0.01em;
+    }
+    .brand-badge {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      font-size: 0.9rem;
+    }
+    .nav-links a { color: var(--muted); font-weight: 500; }
+    .nav-links a:hover { color: var(--ink); text-decoration: none; }
+    .lang-btn {
+      font-family: var(--sans);
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 5px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--ink);
+      cursor: pointer;
+    }
+    .lang-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Bilingual visibility */
+    body[data-lang="en"] [data-zh] { display: none !important; }
+    body[data-lang="zh"] [data-en] { display: none !important; }
+
+    /* Hero */
+    .hero {
+      padding: 64px 0 48px;
+      display: grid;
+      grid-template-columns: 1.05fr 1fr;
+      gap: 36px;
+      align-items: center;
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--accent);
+      background: var(--accent-soft);
+      padding: 4px 10px;
+      border-radius: 999px;
+      margin-bottom: 16px;
+    }
+    h1 {
+      margin: 0 0 16px;
+      font-size: clamp(2rem, 3.6vw, 2.85rem);
+      line-height: 1.15;
+      letter-spacing: -0.025em;
+    }
+    .lead {
+      font-size: 1.08rem;
+      color: var(--muted);
+      margin: 0 0 24px;
+    }
+    .cta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.92rem;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--ink);
+      cursor: pointer;
+    }
+    .btn:hover { border-color: var(--ink); text-decoration: none; }
+    .btn-primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #ffffff;
+    }
+    .btn-primary:hover { background: #0d625b; border-color: #0d625b; }
+
+    .install-pill {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-family: var(--mono);
+      font-size: 0.86rem;
+      max-width: 420px;
+    }
+    .copy-btn {
+      font-family: var(--sans);
+      font-size: 0.76rem;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--line);
+      background: var(--surface-alt);
+      color: var(--ink);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Terminal Demo */
+    .terminal {
+      background: var(--term-bg);
+      color: var(--term-ink);
+      border-radius: var(--radius);
+      border: 1px solid #1e293b;
+      box-shadow: 0 18px 40px rgba(15, 23, 42, 0.14);
+      overflow: hidden;
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      line-height: 1.55;
+    }
+    .term-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: #1e293b;
+      color: var(--term-muted);
+      font-size: 0.75rem;
+    }
+    .dots { display: flex; gap: 6px; }
+    .dots span {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: #475569;
+    }
+    .term-body {
+      padding: 16px 18px;
+      overflow-x: auto;
+    }
+    .term-cmd { color: #38bdf8; margin-bottom: 10px; }
+    .term-summary {
+      padding: 6px 10px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 6px;
+      margin-bottom: 12px;
+      color: #f8fafc;
+    }
+    .finding { margin-bottom: 10px; }
+    .badge {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-weight: 700;
+      font-size: 0.72rem;
+      margin-right: 6px;
+    }
+    .b-ok { background: rgba(16, 185, 129, 0.18); color: #34d399; }
+    .b-warn { background: rgba(245, 158, 11, 0.18); color: #fbbf24; }
+    .b-err { background: rgba(239, 68, 68, 0.18); color: #f87171; }
+    .term-detail { color: var(--term-muted); padding-left: 14px; }
+
+    /* Sections */
+    section { padding: 48px 0; border-top: 1px solid var(--line); }
+    h2 {
+      margin: 0 0 8px;
+      font-size: 1.55rem;
+      letter-spacing: -0.02em;
+    }
+    .section-sub {
+      margin: 0 0 28px;
+      color: var(--muted);
+      font-size: 0.98rem;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+    }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 18px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 20px;
+    }
+    .card h3 {
+      margin: 0 0 8px;
+      font-size: 1.02rem;
+    }
+    .card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    /* Code blocks */
+    .code-card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .code-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      background: var(--surface-alt);
+      border-bottom: 1px solid var(--line);
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+    pre {
+      margin: 0;
+      padding: 16px;
+      font-family: var(--mono);
+      font-size: 0.82rem;
+      line-height: 1.55;
+      overflow-x: auto;
+      background: var(--surface);
+    }
+
+    /* Boundaries */
+    .boundary-box {
+      background: var(--surface-alt);
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--accent);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+    }
+    .boundary-box ul {
+      margin: 10px 0 0;
+      padding-left: 20px;
+      color: var(--muted);
+    }
+    .boundary-box li { margin-bottom: 6px; }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--line);
+      padding: 32px 0 48px;
+      color: var(--muted);
+      font-size: 0.88rem;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .foot-links { display: flex; flex-wrap: wrap; gap: 18px; }
+
+    @media (max-width: 860px) {
+      .hero { grid-template-columns: 1fr; padding: 40px 0 32px; }
+      .grid-3 { grid-template-columns: 1fr; }
+      .grid-2 { grid-template-columns: 1fr; }
+      .nav-links a.hide-sm { display: none; }
+    }
+  </style>
+</head>
+<body data-lang="en">
+  <header>
+    <div class="wrap nav">
+      <div class="brand">
+        <span>claimcite</span>
+        <span class="brand-badge">v0.3.0 · MIT</span>
+      </div>
+      <nav class="nav-links">
+        <a href="#checks" class="hide-sm" data-en>Checks</a>
+        <a href="#checks" class="hide-sm" data-zh>核查能力</a>
+        <a href="#setup" class="hide-sm" data-en>Install &amp; MCP</a>
+        <a href="#setup" class="hide-sm" data-zh>安装与 MCP</a>
+        <a href="#boundaries" class="hide-sm" data-en>Scope</a>
+        <a href="#boundaries" class="hide-sm" data-zh>边界说明</a>
+        <a href="https://pypi.org/project/claimcite/" target="_blank" rel="noopener">PyPI</a>
+        <a href="https://github.com/wasabihu/claimcite" target="_blank" rel="noopener">GitHub</a>
+        <button class="lang-btn" id="langToggle" type="button">中文</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div class="hero">
+      <div>
+        <div class="eyebrow">Python 3.10+ · Zero Runtime Deps · CLI &amp; stdio MCP</div>
+        <h1 data-en>Catch fabricated DOIs, retracted papers, and misquoted text before publishing.</h1>
+        <h1 data-zh>发稿交审前，自动揪出假 DOI、已撤稿论文与错引原文。</h1>
+        <p class="lead" data-en>
+          claimcite verifies every DOI, PMID, arXiv ID, and web link in Markdown or plain text directly against doi.org, Crossref, PubMed, and arXiv — no LLM API keys, no document uploads.
+        </p>
+        <p class="lead" data-zh>
+          直接基于 doi.org、Crossref、PubMed 与 arXiv 公开注册表逐条核查 Markdown 或纯文本中的引用。零第三方运行时依赖，不需要大模型 Key，也不上传整篇文稿。
+        </p>
+
+        <div class="cta-row">
+          <a class="btn btn-primary" href="#setup" data-en>Use via CLI or MCP</a>
+          <a class="btn btn-primary" href="#setup" data-zh>安装与接入 MCP</a>
+          <a class="btn" href="https://github.com/wasabihu/claimcite" target="_blank" rel="noopener">GitHub Repo</a>
+          <a class="btn" href="https://github.com/wasabihu/claimcite/blob/main/benchmarks/README.md" target="_blank" rel="noopener" data-en>20-Case Benchmark</a>
+          <a class="btn" href="https://github.com/wasabihu/claimcite/blob/main/benchmarks/README.md" target="_blank" rel="noopener" data-zh>20 条基准评测</a>
+        </div>
+
+        <div class="install-pill">
+          <code id="installCmd">uv tool install claimcite</code>
+          <button class="copy-btn" data-copy="uv tool install claimcite" type="button" data-en>Copy</button>
+          <button class="copy-btn" data-copy="uv tool install claimcite" type="button" data-zh>复制</button>
+        </div>
+      </div>
+
+      <div class="terminal" aria-label="Sample claimcite output">
+        <div class="term-bar">
+          <div class="dots"><span></span><span></span><span></span></div>
+          <span>examples/sample.md</span>
+        </div>
+        <div class="term-body">
+          <div class="term-cmd">$ claimcite check examples/sample.md --no-web</div>
+          <div class="term-summary">1 ok · 2 warnings · 2 errors · 0 not checked</div>
+
+          <div class="finding">
+            <span class="badge b-ok">OK</span> line 3 · <code>doi:10.1007/s10654-019-00524-3</code>
+            <div class="term-detail">Coffee consumption and mortality (2019) · Systematic review / meta-analysis</div>
+          </div>
+
+          <div class="finding">
+            <span class="badge b-err">ERROR</span> line 7 · <code>doi:10.1016/s0140-6736(10)61388-8</code>
+            <div class="term-detail">Title does not match identifier · Year differs: doc 2021, registry 2011</div>
+          </div>
+
+          <div class="finding">
+            <span class="badge b-err">ERROR</span> line 9 · <code>doi:10.1001/jama.2022.99999</code>
+            <div class="term-detail">Identifier does not exist</div>
+          </div>
+
+          <div class="finding">
+            <span class="badge b-warn">WARN</span> line 11 · <code>pmid:33237064</code>
+            <div class="term-detail">Quoted text not found in abstract: “calcium and vitamin D supplementation cured osteoporosis in all women”</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <section id="checks">
+      <h2 data-en>What it checks</h2>
+      <h2 data-zh>核心核查能力</h2>
+      <p class="section-sub" data-en>Deterministic checks backed by authoritative registries — no LLM guessing.</p>
+      <p class="section-sub" data-zh>全部基于公开权威文献接口做确定性核对，不用大模型猜答案。</p>
+
+      <div class="grid-3">
+        <div class="card">
+          <h3 data-en>Identifier Resolution</h3>
+          <h3 data-zh>多源标识符核验</h3>
+          <p data-en>Verifies DOIs (doi.org + Crossref), PubMed PMIDs, and arXiv IDs including 10.48550/arXiv.* via arXiv Atom batch queries.</p>
+          <p data-zh>支持 DOI（doi.org 与 Crossref）、PubMed PMID，以及 arXiv ID 与 10.48550/arXiv.* 批量接口。</p>
+        </div>
+
+        <div class="card">
+          <h3 data-en>Retraction Detection</h3>
+          <h3 data-zh>撤稿检测（不误伤撤稿声明）</h3>
+          <p data-en>Flags retracted papers via PubMed Retracted Publication / RetractionIn and Crossref updated-by / relation.is-retracted-by without flagging retraction notices themselves.</p>
+          <p data-zh>结合 PubMed 与 Crossref 的撤稿关系字段标出被撤论文，同时避免把撤稿声明本身误判为被撤稿件。</p>
+        </div>
+
+        <div class="card">
+          <h3 data-en>Title, Year &amp; Quote Match</h3>
+          <h3 data-zh>题名、年份与引号原文比对</h3>
+          <p data-en>Checks title similarity (stripping RETRACTED: prefixes), publication year (±1 tolerance), and verbatim quoted text against abstracts or fetched web pages.</p>
+          <p data-zh>比对题名一致性、年份偏差（±1 年容差），以及引号内的原话是否真正出现在摘要或网页原文中。</p>
+        </div>
+
+        <div class="card">
+          <h3 data-en>Unlinked Reference Search</h3>
+          <h3 data-zh>无 DOI 参考文献检索</h3>
+          <p data-en>Parses APA, Harvard, MLA, Vancouver, GB/T 7714, numbered [1] lists, and footnotes [^1], searching titles in Crossref and PubMed.</p>
+          <p data-zh>自动识别常见中英文引文格式与 [1] / [^1] 尾注，即使没有写 DOI 也会按标题去 Crossref 和 PubMed 检索核实。</p>
+        </div>
+
+        <div class="card">
+          <h3 data-en>Study Type Signals</h3>
+          <h3 data-zh>研究类型标注</h3>
+          <p data-en>Surfaces PubMed publication types and MeSH tags (Systematic review / meta-analysis, RCT, observational, animal study) directly in reports.</p>
+          <p data-zh>自动提取 PubMed 文献类型与 MeSH 标签（系统综述/Meta、随机对照试验、观察性研究、动物实验等）。</p>
+        </div>
+
+        <div class="card">
+          <h3 data-en>30-Day Local Cache</h3>
+          <h3 data-zh>30 天本地缓存</h3>
+          <p data-en>Successful lookups are cached locally for 30 days under XDG_CACHE_HOME. Lookup failures are never cached. Pass --no-cache to bypass.</p>
+          <p data-zh>成功查询结果本地缓存 30 天（失败请求绝不缓存），重复核对毫秒级完成；也可用 --no-cache 强制刷新。</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="setup">
+      <h2 data-en>Install, MCP Server &amp; CI</h2>
+      <h2 data-zh>快速上手：CLI、MCP 与 CI</h2>
+      <p class="section-sub" data-en>Run from the terminal, wire into Claude / Cursor / Codex via stdio MCP, or gate pull requests.</p>
+      <p class="section-sub" data-zh>既可以命令行单次检查，也能作为零依赖 stdio MCP 接入 AI 编辑器，或放进 GitHub Actions 卡口。</p>
+
+      <div class="grid-2">
+        <div class="code-card">
+          <div class="code-head">
+            <span>CLI (pipx / uv)</span>
+            <button class="copy-btn" data-copy="pipx install claimcite&#10;claimcite check article.md&#10;claimcite check article.md --lang zh&#10;claimcite check article.md --format json" type="button" data-en>Copy</button>
+            <button class="copy-btn" data-copy="pipx install claimcite&#10;claimcite check article.md&#10;claimcite check article.md --lang zh&#10;claimcite check article.md --format json" type="button" data-zh>复制</button>
+          </div>
+          <pre><code>pipx install claimcite
+claimcite check article.md
+claimcite check article.md --lang zh
+claimcite check article.md --format json</code></pre>
+        </div>
+
+        <div class="code-card">
+          <div class="code-head">
+            <span>stdio MCP Server (uvx)</span>
+            <button class="copy-btn" data-copy='{&#10;  "mcpServers": {&#10;    "claimcite": {&#10;      "command": "uvx",&#10;      "args": ["claimcite", "mcp"]&#10;    }&#10;  }&#10;}' type="button" data-en>Copy</button>
+            <button class="copy-btn" data-copy='{&#10;  "mcpServers": {&#10;    "claimcite": {&#10;      "command": "uvx",&#10;      "args": ["claimcite", "mcp"]&#10;    }&#10;  }&#10;}' type="button" data-zh>复制</button>
+          </div>
+          <pre><code>{
+  "mcpServers": {
+    "claimcite": {
+      "command": "uvx",
+      "args": ["claimcite", "mcp"]
+    }
+  }
+}</code></pre>
+        </div>
+
+        <div class="code-card">
+          <div class="code-head">
+            <span>GitHub Action</span>
+            <button class="copy-btn" data-copy="- uses: wasabihu/claimcite@v0.3.0&#10;  with:&#10;    files: &quot;docs/**/*.md&quot;&#10;    fail-on: error" type="button" data-en>Copy</button>
+            <button class="copy-btn" data-copy="- uses: wasabihu/claimcite@v0.3.0&#10;  with:&#10;    files: &quot;docs/**/*.md&quot;&#10;    fail-on: error" type="button" data-zh>复制</button>
+          </div>
+          <pre><code>- uses: wasabihu/claimcite@v0.3.0
+  with:
+    files: "docs/**/*.md"
+    fail-on: error</code></pre>
+        </div>
+
+        <div class="code-card">
+          <div class="code-head">
+            <span>pre-commit Hook</span>
+            <button class="copy-btn" data-copy="repos:&#10;  - repo: https://github.com/wasabihu/claimcite&#10;    rev: v0.3.0&#10;    hooks:&#10;      - id: claimcite" type="button" data-en>Copy</button>
+            <button class="copy-btn" data-copy="repos:&#10;  - repo: https://github.com/wasabihu/claimcite&#10;    rev: v0.3.0&#10;    hooks:&#10;      - id: claimcite" type="button" data-zh>复制</button>
+          </div>
+          <pre><code>repos:
+  - repo: https://github.com/wasabihu/claimcite
+    rev: v0.3.0
+    hooks:
+      - id: claimcite</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <section id="boundaries">
+      <div class="boundary-box">
+        <h2 data-en>Honest Scope &amp; Boundaries</h2>
+        <h2 data-zh>能力边界说明</h2>
+        <ul>
+          <li data-en><strong>No unquoted paraphrase guessing:</strong> Only explicit identifiers, URLs, reference-list entries, and verbatim/near-verbatim quoted spans are checked.</li>
+          <li data-zh><strong>不猜没有引号的自由改写：</strong>只核查明确写出标识符/链接的引用，以及引号内的原话比对，不擅自对未加引号的改写下结论。</li>
+          <li data-en><strong>Not a semantic peer reviewer or medical advice:</strong> claimcite confirms that sources exist and match what the text says about them; it does not evaluate scientific validity.</li>
+          <li data-zh><strong>不是语义审稿人，也不构成医疗建议：</strong>只确认“文献存不存在、信息对不对得上、是否撤稿”，不评判研究方法本身的优劣。</li>
+          <li data-en><strong>Sister project:</strong> Building an audited Python agent runtime? See <a href="https://github.com/wasabihu/cairnkit" target="_blank" rel="noopener">cairnkit</a>, which includes a citation-checking approval workflow example using claimcite.</li>
+          <li data-zh><strong>联动项目：</strong>如果你正在写需要人工审批边界的 Python Agent 后端，可参考姐妹项目 <a href="https://github.com/wasabihu/cairnkit" target="_blank" rel="noopener">cairnkit</a>（内含对接 claimcite 的引用核查审批示例）。</li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <footer class="wrap">
+    <div>claimcite v0.3.0 · MIT License</div>
+    <div class="foot-links">
+      <a href="https://github.com/wasabihu/claimcite" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://pypi.org/project/claimcite/" target="_blank" rel="noopener">PyPI</a>
+      <a href="https://github.com/wasabihu/claimcite/blob/main/skills/claimcite/SKILL.md" target="_blank" rel="noopener">Agent Skill</a>
+      <a href="https://github.com/wasabihu/claimcite/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Changelog</a>
+      <a href="https://github.com/wasabihu/cairnkit" target="_blank" rel="noopener">cairnkit</a>
+    </div>
+  </footer>
+
+  <script>
+    const toggle = document.getElementById("langToggle");
+    toggle.addEventListener("click", () => {
+      const next = document.body.getAttribute("data-lang") === "en" ? "zh" : "en";
+      document.body.setAttribute("data-lang", next);
+      toggle.textContent = next === "en" ? "中文" : "EN";
+    });
+
+    document.querySelectorAll(".copy-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const text = btn.getAttribute("data-copy");
+        if (!text) return;
+        try {
+          await navigator.clipboard.writeText(text);
+          const prev = btn.textContent;
+          btn.textContent = document.body.getAttribute("data-lang") === "en" ? "Copied" : "已复制";
+          setTimeout(() => { btn.textContent = prev; }, 1400);
+        } catch (_) {}
+      });
+    });
+  </script>
+</body>
+</html>
