@@ -37,7 +37,7 @@ ROUTES = {
     "term=daily%20walking%20and%20depression%20risk%20a%20cohort%20study%5Bti%5D": "esearch_title_invented.json",
     "query.bibliographic=H%C3%B6lzel%20BK": "crossref_search_holzel.json",
     "api/handles/10.1016/j.pscychresns.2010.08.006": "handle_holzel.json",
-    "term=10.1016%2Fj.pscychresns.2010.08.006%5Bdoi%5D": "esearch_doi_holzel.json",
+    "term=%2210.1016%2Fj.pscychresns.2010.08.006%22%5Bdoi%5D": "esearch_doi_holzel.json",
     "efetch.fcgi?db=pubmed&id=21071182&": "pubmed_holzel.xml",
     "term=mindfulness%20practice%20leads%20to%20increases%20in%20regional%20brain%20gray%20matter%20density%5Bti%5D": (
         "esearch_title_holzel.json"

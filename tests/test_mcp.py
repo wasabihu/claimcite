@@ -15,7 +15,7 @@ def _make_server() -> MCPServer:
         {
             "api/handles/10.1007/s10654-019-00524-3": "handle_found.json",
             "api/handles/10.9999/does-not-exist-claimcite": "handle_missing.json",
-            "term=10.1007%2Fs10654-019-00524-3%5Bdoi%5D": "esearch_doi_found.json",
+            "term=%2210.1007%2Fs10654-019-00524-3%22%5Bdoi%5D": "esearch_doi_found.json",
             "efetch.fcgi?db=pubmed&id=31055709": "pubmed_efetch.xml",
             "id_list=1706.03762&max_results=1": "arxiv_1706_03762.xml",
         }

@@ -13,6 +13,7 @@ import html
 import json
 import os
 import re
+import threading
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -29,6 +30,8 @@ CROSSREF_SEARCH = "https://api.crossref.org/works?rows=5&select=DOI,title,issued
 ARXIV_API = "https://export.arxiv.org/api/query?id_list="
 _ATOM_NS = "{http://www.w3.org/2005/Atom}"
 _ARXIV_NS = "{http://arxiv.org/schemas/atom}"
+ET.register_namespace("", "http://www.w3.org/2005/Atom")
+ET.register_namespace("arxiv", "http://arxiv.org/schemas/atom")
 _DOI_IN_TEXT = re.compile(r"""\b(10\.\d{4,9}/[^\s<>"']+)""")
 _TAG = re.compile(r"<[^>]+>")
 
@@ -39,9 +42,23 @@ def _text(el: ET.Element | None) -> str | None:
     return re.sub(r"\s+", " ", "".join(el.itertext())).strip() or None
 
 
+def _retraction_doi(node: ET.Element) -> str | None:
+    retraction_doi = None
+    for cc in node.iter("CommentsCorrections"):
+        if cc.get("RefType") == "RetractionIn":
+            src_text = cc.findtext("RefSource") or ""
+            if m := _DOI_IN_TEXT.search(src_text):
+                cand = m.group(1).rstrip(".,;:")
+                while cand.endswith(")") and cand.count(")") > cand.count("("):
+                    cand = cand[:-1].rstrip(".,;:")
+                retraction_doi = cand.lower()
+    return retraction_doi
+
+
 def parse_pubmed(xml: str) -> dict[str, Record]:
     out: dict[str, Record] = {}
-    for art in ET.fromstring(xml).iter("PubmedArticle"):
+    root = ET.fromstring(xml)
+    for art in root.iter("PubmedArticle"):
         pmid = art.findtext("MedlineCitation/PMID")
         if not pmid:
             continue
@@ -53,7 +70,7 @@ def parse_pubmed(xml: str) -> dict[str, Record]:
             year = medline[:4] if medline[:4].isdigit() else None
         years = []
         for y in (year, art.findtext(".//Article/ArticleDate/Year")):
-            if y and int(y) not in years:
+            if y and y.isdigit() and int(y) not in years:
                 years.append(int(y))
         doi = next(
             (i.text for i in art.iterfind("PubmedData/ArticleIdList/ArticleId") if i.get("IdType") == "doi"),
@@ -62,20 +79,10 @@ def parse_pubmed(xml: str) -> dict[str, Record]:
         abstract = " ".join(filter(None, (_text(a) for a in art.iter("AbstractText")))) or None
         mesh = {d.text for d in art.iter("DescriptorName")}
         pub_types = [p.text for p in art.iter("PublicationType") if p.text]
-        retracted = "Retracted Publication" in pub_types
-        retraction_doi = None
-        for cc in art.iter("CommentsCorrections"):
-            if cc.get("RefType") == "RetractionIn":
-                src_text = cc.findtext("RefSource") or ""
-                if m := _DOI_IN_TEXT.search(src_text):
-                    cand = m.group(1).rstrip(".,;:")
-                    while cand.endswith(")") and cand.count(")") > cand.count("("):
-                        cand = cand[:-1].rstrip(".,;:")
-                    retraction_doi = cand.lower()
         out[pmid] = Record(
             source="pubmed",
             title=_text(art.find(".//Article/ArticleTitle")),
-            year=int(year) if year else None,
+            year=years[0] if years else None,
             years=years,
             doi=doi.lower() if doi else None,
             pmid=pmid,
@@ -83,8 +90,56 @@ def parse_pubmed(xml: str) -> dict[str, Record]:
             pub_types=pub_types,
             humans="Humans" in mesh,
             animals="Animals" in mesh,
-            retracted=retracted,
-            retraction_doi=retraction_doi,
+            retracted="Retracted Publication" in pub_types,
+            retraction_doi=_retraction_doi(art),
+        )
+    for book_art in root.iter("PubmedBookArticle"):
+        doc = book_art.find("BookDocument")
+        if doc is None:
+            continue
+        pmid = doc.findtext("PMID")
+        if not pmid:
+            continue
+        years = []
+        for raw_y in (
+            doc.findtext("Book/PubDate/Year"),
+            (doc.findtext("Book/PubDate/MedlineDate") or "")[:4],
+            doc.findtext("ContributionDate/Year"),
+            doc.findtext("DateRevised/Year"),
+        ):
+            if raw_y and raw_y.isdigit() and int(raw_y) not in years:
+                years.append(int(raw_y))
+        doi = (
+            next(
+                (i.text for i in doc.iterfind("ArticleIdList/ArticleId") if i.get("IdType") == "doi"),
+                None,
+            )
+            or next(
+                (
+                    i.text
+                    for i in book_art.iterfind("PubmedBookData/ArticleIdList/ArticleId")
+                    if i.get("IdType") == "doi"
+                ),
+                None,
+            )
+            or next((e.text for e in doc.iter("ELocationID") if e.get("EIdType") == "doi"), None)
+        )
+        abstract = " ".join(filter(None, (_text(a) for a in doc.iter("AbstractText")))) or None
+        pub_types = [p.text for p in doc.iter("PublicationType") if p.text]
+        mesh = {d.text for d in book_art.iter("DescriptorName")}
+        out[pmid] = Record(
+            source="pubmed",
+            title=_text(doc.find("ArticleTitle")) or _text(doc.find("Book/BookTitle")),
+            year=years[0] if years else None,
+            years=years,
+            doi=doi.lower() if doi else None,
+            pmid=pmid,
+            abstract=abstract,
+            pub_types=pub_types,
+            humans="Humans" in mesh,
+            animals="Animals" in mesh,
+            retracted="Retracted Publication" in pub_types,
+            retraction_doi=_retraction_doi(book_art),
         )
     return out
 
@@ -176,8 +231,6 @@ def parse_arxiv(xml: str) -> dict[str, Record]:
 
 def _cache_arxiv_entries(xml: str, store: Callable[[str, str], None]) -> None:
     root = ET.fromstring(xml)
-    ET.register_namespace("", "http://www.w3.org/2005/Atom")
-    ET.register_namespace("arxiv", "http://arxiv.org/schemas/atom")
     for entry in root.findall(f"{_ATOM_NS}entry"):
         entry_id = (entry.findtext(f"{_ATOM_NS}id") or "").strip()
         if "/abs/" not in entry_id or "/api/errors" in entry_id:
@@ -219,8 +272,48 @@ class Lookup:
         self.workers = workers
         self._cache: dict[tuple[str, str], Record | LookupFailed | None] = {}
         self._found: dict[str, tuple[str, Record] | LookupFailed | None] = {}
+        self._web_lock = threading.Lock()
+        self._web_cache: dict[str, str | BaseException] = {}
+        self._web_inflight: dict[str, threading.Event] = {}
         key = os.environ.get("NCBI_API_KEY")
         self._ncbi_key = f"&api_key={key}" if key else ""
+
+    def web_http(self, url: str) -> str:
+        """Fetch an ordinary web URL once per Lookup run without writing HTML to the 30-day disk cache."""
+        with self._web_lock:
+            if url in self._web_cache:
+                cached = self._web_cache[url]
+                if isinstance(cached, BaseException):
+                    raise cached
+                return cached
+            inflight = self._web_inflight.get(url)
+            if inflight is None:
+                inflight = threading.Event()
+                self._web_inflight[url] = inflight
+                owner = True
+            else:
+                owner = False
+        if not owner:
+            inflight.wait()
+            with self._web_lock:
+                cached = self._web_cache[url]
+            if isinstance(cached, BaseException):
+                raise cached
+            return cached
+        raw_http = getattr(self.http, "http", self.http)
+        try:
+            body = raw_http(url)
+        except BaseException as exc:
+            with self._web_lock:
+                self._web_cache[url] = exc
+                self._web_inflight.pop(url, None)
+            inflight.set()
+            raise
+        with self._web_lock:
+            self._web_cache[url] = body
+            self._web_inflight.pop(url, None)
+        inflight.set()
+        return body
 
     def doi(self, doi: str) -> Record | None:
         return self._get("doi", doi)
@@ -278,20 +371,23 @@ class Lookup:
             else:
                 self._cache[("doi", d)] = replace(rec, doi=rec.doi or d)
 
-        # 2. PubMed, in batches: DOIs -> PMIDs, then one efetch for all PMIDs.
+        # 2. PubMed, in batches: DOIs -> PMIDs, then efetch per chunk with isolated failure handling.
         records: dict[str, Record] = {}
-        pubmed_error = None
-        try:
-            ids = list(pmids)
-            for chunk in _chunks(regular_live, 40):
-                term = quote(" OR ".join(f"{d}[doi]" for d in chunk), safe="")
+        pmid_errors: dict[str, LookupFailed] = {}
+        ids = list(pmids)
+        for chunk in _chunks(regular_live, 40):
+            term = quote(" OR ".join(f'"{d.replace(chr(34), "")}"[doi]' for d in chunk), safe="")
+            try:
                 found = json.loads(
                     self.http(
                         f"{EUTILS}/esearch.fcgi?db=pubmed&term={term}&retmode=json&retmax=200{self._ncbi_key}"
                     )
                 )
                 ids += found.get("esearchresult", {}).get("idlist", [])
-            for chunk in _chunks(list(dict.fromkeys(ids)), 150):
+            except Exception:  # noqa: BLE001, S110 - DOIs still fall through to Crossref below
+                pass
+        for chunk in _chunks(list(dict.fromkeys(ids)), 150):
+            try:
                 records.update(
                     parse_pubmed(
                         self.http(
@@ -299,11 +395,13 @@ class Lookup:
                         )
                     )
                 )
-        except Exception as e:  # noqa: BLE001
-            pubmed_error = LookupFailed(f"PubMed: {type(e).__name__}: {e}")
+            except Exception as e:  # noqa: BLE001
+                err = LookupFailed(f"PubMed: {type(e).__name__}: {e}")
+                for p in chunk:
+                    pmid_errors[p] = err
 
         for p in pmids:
-            self._cache[("pmid", p)] = records.get(p) if pubmed_error is None else pubmed_error
+            self._cache[("pmid", p)] = pmid_errors[p] if p in pmid_errors else records.get(p)
         by_doi = {r.doi: r for r in records.values() if r.doi}
         rest = [d for d in regular_live if d not in by_doi]
         for d in regular_live:

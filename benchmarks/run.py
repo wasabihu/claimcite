@@ -17,6 +17,11 @@ ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / "tests" / "fixtures"
 DEFAULT_CASES = Path(__file__).resolve().parent / "cases.jsonl"
 
+
+def _doi_route(doi: str) -> str:
+    return "term=" + quote('"' + doi + '"[doi]', safe="")
+
+
 _ROUTES: dict[str, str | type[NotFound]] = {
     "doi.org/api/handles/10.1007/s10654-019-00524-3": "handle_found.json",
     "doi.org/api/handles/10.1016/j.pscychresns.2010.08.006": "handle_holzel.json",
@@ -26,11 +31,11 @@ _ROUTES: dict[str, str | type[NotFound]] = {
     "doi.org/api/handles/10.1016/s0140-6736(10)60175-4": "handle_retraction_notice.json",
     "doi.org/api/handles/10.1016/s0140-6736%2810%2960175-4": "handle_retraction_notice.json",
     "doi.org/api/handles/10.9999/does-not-exist-claimcite": "handle_missing.json",
-    f"term={quote('10.1007/s10654-019-00524-3[doi]', safe='')}": "esearch_doi_found.json",
-    f"term={quote('10.1016/j.pscychresns.2010.08.006[doi]', safe='')}": "esearch_doi_holzel.json",
-    f"term={quote('10.9999/does-not-exist-claimcite[doi]', safe='')}": "esearch_doi_missing.json",
-    f"term={quote('10.1016/s0140-6736(97)11096-0[doi]', safe='')}": "esearch_empty.json",
-    f"term={quote('10.1016/s0140-6736(10)60175-4[doi]', safe='')}": "esearch_empty.json",
+    _doi_route("10.1007/s10654-019-00524-3"): "esearch_doi_found.json",
+    _doi_route("10.1016/j.pscychresns.2010.08.006"): "esearch_doi_holzel.json",
+    _doi_route("10.9999/does-not-exist-claimcite"): "esearch_doi_missing.json",
+    _doi_route("10.1016/s0140-6736(97)11096-0"): "esearch_empty.json",
+    _doi_route("10.1016/s0140-6736(10)60175-4"): "esearch_empty.json",
     "efetch.fcgi?db=pubmed&id=31055709": "pubmed_efetch.xml",
     "efetch.fcgi?db=pubmed&id=33237064": "pubmed_efetch.xml",
     "efetch.fcgi?db=pubmed&id=30221596": "pubmed_efetch.xml",

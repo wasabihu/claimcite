@@ -9,10 +9,18 @@ from pathlib import Path
 from typing import Any, BinaryIO
 
 from . import __version__
-from .check import check_text
-from .cli import CANNOT_READ, NO_DOCUMENTS, documents, make_lookup
+from .check import check_documents, check_text
 from .report import to_json, to_markdown
 from .sources import Lookup
+from .workspace import (
+    CANNOT_READ,
+    DOCUMENT_SUFFIXES,
+    NO_DOCUMENTS,
+    UNSUPPORTED_FILE,
+    documents,
+    format_documents_report,
+    make_default_lookup,
+)
 
 SUPPORTED_PROTOCOLS = ("2025-06-18", "2025-03-26", "2024-11-05")
 DEFAULT_PROTOCOL = "2024-11-05"
@@ -101,7 +109,7 @@ class MCPServer:
 
     def __init__(
         self,
-        lookup_factory: Callable[..., Lookup] = make_lookup,
+        lookup_factory: Callable[..., Lookup] = make_default_lookup,
         *,
         default_no_cache: bool = False,
     ) -> None:
@@ -185,6 +193,9 @@ class MCPServer:
         for given in raw_paths:
             if given == "-":
                 return _tool_error("Path '-' (stdin) is reserved for the MCP stdio transport.", req_id)
+            given_path = Path(given)
+            if not given_path.is_dir() and given_path.suffix.lower() not in DOCUMENT_SUFFIXES:
+                return _tool_error(UNSUPPORTED_FILE[lang].format(path=given), req_id)
             paths = documents(given)
             if not paths:
                 return _tool_error(NO_DOCUMENTS[lang].format(path=given), req_id)
@@ -196,25 +207,8 @@ class MCPServer:
                     return _tool_error(CANNOT_READ[lang].format(path=path, reason=reason), req_id)
 
         several = len(texts) > 1 or any(Path(g).is_dir() for g in raw_paths)
-        if fmt == "json":
-            reports = []
-            for path, text in texts.items():
-                findings = check_text(text, lookup, web=web, search=search)
-                reports.append({"path": path, **json.loads(to_json(findings))})
-            if several:
-                total = {k: sum(r["summary"][k] for r in reports) for k in reports[0]["summary"]}
-                payload = {"summary": total, "files": reports}
-            else:
-                reports[0].pop("path")
-                payload = reports[0]
-            return _tool_ok(json.dumps(payload, ensure_ascii=False, indent=2), req_id)
-
-        sections = []
-        for path, text in texts.items():
-            findings = check_text(text, lookup, web=web, search=search)
-            body = to_markdown(findings, lang)
-            sections.append(f"## {path}\n{body}" if several else body)
-        return _tool_ok("\n".join(sections), req_id)
+        results = check_documents(texts, lookup, web=web, search=search)
+        return _tool_ok(format_documents_report(results, fmt=fmt, lang=lang, several=several), req_id)
 
     def serve(self, stdin: BinaryIO, stdout: BinaryIO) -> int:
         while True:

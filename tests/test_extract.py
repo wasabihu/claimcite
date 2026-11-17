@@ -81,3 +81,35 @@ def test_doi_inside_a_publisher_link_leaves_out_the_page_name():
 def test_a_doi_written_out_keeps_every_character():
     # Only a DOI found inside some other site's link is trimmed; what the author wrote as a DOI is not.
     assert extract_references("doi:10.1000/abc/full")[0].id == "10.1000/abc/full"
+
+
+def test_fenced_and_inline_code_are_skipped():
+    scheme = "https://"
+    doc = (
+        "Real citation: PMID: 30221596 and `doi:10.1001/jama.2022.99999` in inline code.\n\n"
+        "```text\n"
+        f"Error: doi:10.1001/jama.2022.99999 and {scheme}example.org/who-facts\n"
+        "```\n\n"
+        "~~~\n"
+        "arXiv:9912.99999\n"
+        "~~~\n"
+    )
+    refs = extract_references(doc)
+    assert [(r.kind, r.id, r.line) for r in refs] == [("pmid", "30221596", 1)]
+
+
+def test_bracket_and_emphasis_wrappers_are_trimmed_from_identifiers():
+    scheme = "https://"
+    doc = (
+        "In brackets [doi:10.1007/s10654-019-00524-3], "
+        "italic *doi:10.1039/d0fo00787k*, "
+        f"bold **{scheme}doi.org/10.1016/S0140-6736(10)61388-8.**, "
+        f"and link [{scheme}example.org/who-facts]."
+    )
+    refs = extract_references(doc)
+    assert [(r.kind, r.id) for r in refs] == [
+        ("doi", "10.1007/s10654-019-00524-3"),
+        ("doi", "10.1039/d0fo00787k"),
+        ("doi", "10.1016/s0140-6736(10)61388-8"),
+        ("url", f"{scheme}example.org/who-facts"),
+    ]

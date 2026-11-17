@@ -1,0 +1,49 @@
+<?xml version="1.0" ?>
+<!DOCTYPE PubmedArticleSet PUBLIC "-//NLM//DTD PubMedArticle, 1st January 2025//EN" "https://dtd.nlm.nih.gov/ncbi/pubmed/out/pubmed_250101.dtd">
+<PubmedArticleSet>
+  <PubmedBookArticle>
+    <BookDocument>
+      <PMID Version="1">28230935</PMID>
+      <ArticleIdList>
+        <ArticleId IdType="bookaccession">NBK424492</ArticleId>
+        <ArticleId IdType="doi">10.17226/24638</ArticleId>
+      </ArticleIdList>
+      <Book>
+        <Publisher>
+          <PublisherName>National Academies Press (US)</PublisherName>
+          <PublisherLocation>Washington (DC)</PublisherLocation>
+        </Publisher>
+        <BookTitle book="nap24638">Countering Violent Extremism Through Public Health Practice: Proceedings of a Workshop</BookTitle>
+        <PubDate>
+          <Year>2017</Year>
+        </PubDate>
+        <AuthorList Type="authors">
+          <Author>
+            <CollectiveName>National Academies of Sciences, Engineering, and Medicine (US)</CollectiveName>
+          </Author>
+        </AuthorList>
+        <CollectionTitle book="napcollect">The National Academies Collection: Reports funded by National Institutes of Health</CollectionTitle>
+        <ELocationID EIdType="doi">10.17226/24638</ELocationID>
+      </Book>
+      <Language>eng</Language>
+      <PublicationType UI="D016454">Review</PublicationType>
+      <Abstract>
+        <AbstractText>Countering violent extremism consists of various prevention and intervention approaches to increase the resilience of communities and individuals to radicalization toward violent extremism, to provide nonviolent avenues for expressing grievances, and to educate communities about the threat of recruitment and radicalization to violence.</AbstractText>
+        <CopyrightInformation>Copyright © 2017, National Academy of Sciences.</CopyrightInformation>
+      </Abstract>
+    </BookDocument>
+    <PubmedBookData>
+      <History>
+        <PubMedPubDate PubStatus="pubmed">
+          <Year>2017</Year>
+          <Month>2</Month>
+          <Day>24</Day>
+        </PubMedPubDate>
+      </History>
+      <PublicationStatus>ppublish</PublicationStatus>
+      <ArticleIdList>
+        <ArticleId IdType="pubmed">28230935</ArticleId>
+      </ArticleIdList>
+    </PubmedBookData>
+  </PubmedBookArticle>
+</PubmedArticleSet>

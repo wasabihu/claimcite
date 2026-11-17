@@ -11,6 +11,10 @@ from claimcite.report import to_json, to_markdown
 from claimcite.sources import Lookup
 
 
+def _doi_route(doi: str) -> str:
+    return "term=" + quote('"' + doi + '"[doi]', safe="")
+
+
 def test_pubmed_retracted_pmid_is_error_with_notice_doi():
     http = FakeHttp({"efetch.fcgi?db=pubmed&id=9500320": "pubmed_retracted.xml"})
     text = (
@@ -45,7 +49,7 @@ def test_crossref_retracted_doi_strips_retracted_title_prefix():
         {
             "api/handles/10.1016/s0140-6736(97)11096-0": "handle_retracted.json",
             "api/handles/10.1016/s0140-6736%2897%2911096-0": "handle_retracted.json",
-            f"term={quote(doi + '[doi]', safe='')}": "esearch_empty.json",
+            _doi_route(doi): "esearch_empty.json",
             "api.crossref.org/works?filter=doi:10.1016/s0140-6736(97)11096-0&rows=1": "crossref_retracted_filter.json",
         }
     )
@@ -70,7 +74,7 @@ def test_retraction_notice_itself_is_not_flagged_retracted():
         {
             "api/handles/10.1016/s0140-6736(10)60175-4": "handle_retraction_notice.json",
             "api/handles/10.1016/s0140-6736%2810%2960175-4": "handle_retraction_notice.json",
-            f"term={quote(doi + '[doi]', safe='')}": "esearch_empty.json",
+            _doi_route(doi): "esearch_empty.json",
             "api.crossref.org/works?filter=doi:10.1016/s0140-6736(10)60175-4&rows=1": "crossref_retraction_notice_filter.json",
             "api.crossref.org/works/10.9999/": NotFound,
         }

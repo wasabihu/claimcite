@@ -32,8 +32,8 @@ def fake_http():
         {
             "api/handles/10.1007/s10654-019-00524-3": "handle_found.json",
             "api/handles/10.9999/": "handle_missing.json",
-            "term=10.1007%2Fs10654-019-00524-3%5Bdoi%5D": "esearch_doi_found.json",
-            "term=10.9999%2Fdoes-not-exist-claimcite%5Bdoi%5D": "esearch_doi_missing.json",
+            "term=%2210.1007%2Fs10654-019-00524-3%22%5Bdoi%5D": "esearch_doi_found.json",
+            "term=%2210.9999%2Fdoes-not-exist-claimcite%22%5Bdoi%5D": "esearch_doi_missing.json",
             "efetch.fcgi?db=pubmed&id=99999999": "pubmed_missing.xml",
             "efetch.fcgi?db=pubmed&id=": "pubmed_efetch.xml",
             "api.crossref.org/works/10.1007/s10654-019-00524-3": "crossref_work.json",

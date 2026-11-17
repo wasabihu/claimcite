@@ -12,7 +12,7 @@ from .sources import Lookup, LookupFailed
 from .text import CJK, compare_titles, quote_found
 from .web import check_page
 
-__all__ = ["check_reference", "check_text", "compare_titles", "quote_found"]
+__all__ = ["check_documents", "check_reference", "check_text", "compare_titles", "quote_found"]
 
 _RETRACTED_PREFIX = re.compile(
     r"^(?:\[?\s*retracted(?:\s+article)?\s*\]?\s*[:—–-]\s*|retracted\s*:\s*)",
@@ -26,7 +26,8 @@ def check_reference(ref: Reference, lookup: Lookup, web: bool = True, search: bo
     if ref.kind == "url" and not web:
         return Finding(ref, status="unchecked")
     if ref.kind == "url":
-        result = check_page(ref, lookup.http)
+        page_http = getattr(lookup, "web_http", getattr(lookup, "http", None))
+        result = check_page(ref, page_http)
         status = {"alive": "ok", "dead": "warning", "blocked": "unchecked", "failed": "unchecked"}[
             result.state
         ]
@@ -105,17 +106,25 @@ def _compare(f: Finding) -> Finding:
     return f
 
 
-def check_text(
-    text: str, lookup: Lookup | None = None, web: bool = True, search: bool = True
-) -> list[Finding]:
+def check_documents(
+    texts: dict[str, str],
+    lookup: Lookup | None = None,
+    web: bool = True,
+    search: bool = True,
+) -> dict[str, list[Finding]]:
+    """Verify multiple documents in two passes: extract and batch-prefetch across all files first."""
     lookup = lookup or Lookup()
-    refs = extract_references(text)
-    dois = [r.id for r in refs if r.kind == "doi"]
-    pmids = [r.id for r in refs if r.kind == "pmid"]
-    arxivs = [r.id for r in refs if r.kind == "arxiv"]
+    refs_by_path = {path: extract_references(text) for path, text in texts.items()}
+    all_refs = [r for refs in refs_by_path.values() for r in refs]
+    if not all_refs:
+        return {path: [] for path in texts}
+
+    dois = [r.id for r in all_refs if r.kind == "doi"]
+    pmids = [r.id for r in all_refs if r.kind == "pmid"]
+    arxivs = [r.id for r in all_refs if r.kind == "arxiv"]
     if search:
-        # One search at a time (Crossref's limit); then fetch every paper found along with the rest.
-        for r in refs:
+        # One search at a time (Crossref's limit); Lookup.find memoizes repeated contexts.
+        for r in all_refs:
             if r.kind == "text" and r.title and not CJK.search(r.title or r.context):
                 try:
                     hit = lookup.find(r)
@@ -124,6 +133,20 @@ def check_text(
                 if hit and hit[1].doi:
                     dois.append(hit[1].doi)
     lookup.prefetch(dois=dois, pmids=pmids, arxivs=arxivs)
-    # Registry lookups are already batched above; this mainly runs web-page fetches side by side.
+
     with ThreadPoolExecutor(max_workers=lookup.workers) as pool:
-        return list(pool.map(lambda ref: check_reference(ref, lookup, web, search), refs))
+        flat_findings = list(pool.map(lambda ref: check_reference(ref, lookup, web, search), all_refs))
+
+    out: dict[str, list[Finding]] = {}
+    idx = 0
+    for path, refs in refs_by_path.items():
+        nxt = idx + len(refs)
+        out[path] = flat_findings[idx:nxt]
+        idx = nxt
+    return out
+
+
+def check_text(
+    text: str, lookup: Lookup | None = None, web: bool = True, search: bool = True
+) -> list[Finding]:
+    return check_documents({"": text}, lookup=lookup, web=web, search=search)[""]

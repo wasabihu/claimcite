@@ -1,7 +1,12 @@
+from urllib.parse import quote
+
+import pytest
+from conftest import FIXTURES, FakeHttp
+
 from claimcite.check import check_text
 from claimcite.evidence import evidence_level
 from claimcite.net import NotFound
-from claimcite.sources import Lookup
+from claimcite.sources import Lookup, LookupFailed, parse_pubmed
 
 COFFEE_OK = (
     "Kim Y 等 (2019). Coffee consumption and all-cause and cause-specific mortality: "
@@ -119,3 +124,67 @@ def test_doi_org_404_means_the_doi_does_not_exist(fake_http):
     (f,) = run("Smith A (2022). Vitamin D. JAMA. https://doi.org/10.1001/jama.2022.99999", fake_http)
     assert f.exists is False
     assert f.status == "error"
+
+
+def test_pubmed_book_article_pmid_is_parsed_not_reported_missing():
+    http = FakeHttp({"efetch.fcgi?db=pubmed&id=28230935": "pubmed_book.xml"})
+    text = (
+        "National Academies (2017). Countering Violent Extremism Through Public Health Practice: "
+        'Proceedings of a Workshop: "increase the resilience of communities and individuals". '
+        "PMID: 28230935"
+    )
+    (f,) = check_text(text, Lookup(http=http, workers=1), web=False, search=False)
+    assert f.status == "ok"
+    assert f.exists is True
+    assert f.title_match == "match"
+    assert f.year_match is True
+    assert f.quotes == [("increase the resilience of communities and individuals", True)]
+    assert f.record.doi == "10.17226/24638"
+    assert f.evidence.key == "narrative_review"
+
+    chapter_xml = """<PubmedArticleSet><PubmedBookArticle><BookDocument>
+      <PMID>30020604</PMID>
+      <Book><BookTitle>StatPearls</BookTitle><PubDate><Year>2018</Year></PubDate></Book>
+      <ArticleTitle>Essential Hypertension</ArticleTitle>
+      <DateRevised><Year>2024</Year></DateRevised>
+    </BookDocument></PubmedBookArticle></PubmedArticleSet>"""
+    rec = parse_pubmed(chapter_xml)["30020604"]
+    assert rec.title == "Essential Hypertension"
+    assert set(rec.years) == {2018, 2024}
+
+
+def test_parenthesized_sici_doi_quotes_esearch_term_and_hits_pubmed():
+    doi = "10.1016/s0140-6736(97)11096-0"
+    quoted_term = quote('"' + doi + '"[doi]', safe="")
+    http = FakeHttp(
+        {
+            f"api/handles/{doi}": "handle_retracted.json",
+            "api/handles/10.1016/s0140-6736%2897%2911096-0": "handle_retracted.json",
+            f"term={quoted_term}": "esearch_wakefield.json",
+            "efetch.fcgi?db=pubmed&id=9500320": "pubmed_retracted.xml",
+        }
+    )
+    (f,) = check_text(f"Wakefield (1998). doi:{doi}", Lookup(http=http, workers=1), web=False, search=False)
+    assert f.retracted is True
+    assert f.status == "error"
+    assert f.record.source == "pubmed"
+    assert f.record.pmid == "9500320"
+
+
+def test_pubmed_efetch_chunk_failure_preserves_succeeded_chunks():
+    efetch_ok = (FIXTURES / "pubmed_efetch.xml").read_text(encoding="utf-8")
+    pmids = ["30221596", *[str(1000000 + i) for i in range(155)]]
+
+    def chunk_flaky(url):
+        if "efetch.fcgi" in url:
+            if "1000150" in url:
+                raise TimeoutError("second chunk timed out")
+            return efetch_ok
+        raise AssertionError(f"unexpected url: {url}")
+
+    lookup = Lookup(http=chunk_flaky, workers=1)
+    lookup.prefetch(pmids=pmids)
+    assert lookup.pmid("30221596") is not None
+    assert lookup.pmid("1000001") is None
+    with pytest.raises(LookupFailed):
+        lookup.pmid("1000150")

@@ -73,6 +73,7 @@ class CachedHttp:
                 "CREATE TABLE IF NOT EXISTS responses ("
                 "url TEXT PRIMARY KEY, body BLOB NOT NULL, fetched_at REAL NOT NULL)"
             )
+            db.execute("DELETE FROM responses WHERE fetched_at < ?", (time.time() - self.ttl,))
             db.commit()
         finally:
             db.close()
