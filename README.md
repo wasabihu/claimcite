@@ -38,11 +38,10 @@ $ claimcite check examples/sample.md
 | A web link is alive and contains the quoted text | fetch the page (respecting `robots.txt`), strip HTML, normalise whitespace |
 | A reference with no DOI or PMID exists | search the title in Crossref, then PubMed; then check it like any other paper |
 
-It reads Markdown or plain text and understands the common
-`Author (Year). Title. Journal: "quote". https://doi.org/…` pattern, plus `doi:…`, bare DOIs,
-`PMID: …` and PubMed links. Numbered citations work too: a quote in the text followed by `[1]`, `[^1]`,
-`[1, 2]` or `[1-3]` is checked against the matching entry in the reference list (`[1] …`, `1. …` or
-`[^1]: …`).
+It reads Markdown or plain text (unwrapping soft-wrapped lines and indented reference items) and understands the common
+`Author (Year). Title. Journal: "quote". https://doi.org/…` pattern, quotes written in the same sentence after an identifier, plus `doi:…`, bare DOIs,
+`PMID: …`, `arXiv:…` and PubMed/arXiv links. Numbered and author-year citations work too: a quote in the text followed by `[1]`, `[^1]`,
+`[1, 2]`, `[1-3]` or an unambiguous `(Author, Year)` / `Author (Year)` citation is checked against the matching entry in the reference list.
 
 Most invented citations have no DOI: `Chen, L. (2021). A plausible title. Journal of Something, 14(2), 88–97.`
 Entries like that under a reference-list heading (`## References`, `参考文献`, `Sources` …), and `[1] …` or
@@ -93,7 +92,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: wasabihu/claimcite@v0.3.0
+      - uses: wasabihu/claimcite@v0.4.0
         with:
           files: "docs/**/*.md"  # default: every Markdown file
           fail-on: error         # or: warning, never
@@ -109,7 +108,7 @@ The report also appears in the job summary. Runs on Linux and macOS runners.
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/wasabihu/claimcite
-    rev: v0.3.0
+    rev: v0.4.0
     hooks:
       - id: claimcite
         # args: [--no-web]   # faster: skip ordinary web links

@@ -38,7 +38,7 @@ $ claimcite check examples/sample.md --lang zh
 | 网页链接能否打开、是否包含引号里的原文 | 抓取页面（遵守 `robots.txt`）、剥离 HTML、规范化空白 |
 | 没有 DOI / PMID 的参考文献是否存在 | 用标题先搜 Crossref，再搜 PubMed；找到后和其他论文一样核对 |
 
-支持 Markdown 和纯文本，能识别常见的 `作者 (年份). 标题. 期刊：「引文」. <https://doi.org/…>` 格式，也能识别 `doi:…`、裸 DOI、`PMID: …` 和 PubMed 链接。也支持编号引用：正文里引号中的原文后面跟着 `[1]`、`[^1]`、`[1, 2]` 或 `[1-3]`，会拿去和文末参考文献里对应的那一条核对（`[1] …`、`1. …` 或 `[^1]: …`）。
+支持 Markdown 和纯文本（自动合并软换行段落与跨行缩进参考文献），能识别常见的 `作者 (年份). 标题. 期刊：「引文」. <https://doi.org/…>` 格式、标识符后同句内的引文，也能识别 `doi:…`、裸 DOI、`PMID: …`、`arXiv:…` 及对应链接。同时支持编号引用与作者-年份引用：正文引号后跟着 `[1]`、`[^1]`、`[1, 2]`、`[1-3]`，或无歧义的 `(Author, Year)` / `Author (Year)`，都会拿去和文末参考文献里对应的那一条核对。
 
 编造的引用大多没有 DOI，比如 `Chen, L. (2021). 一个像模像样的标题. Journal of Something, 14(2), 88–97.`。参考文献标题（`## References`、`参考文献`、`Sources` 等）下面的这类条目，以及任何位置的 `[1] …`、`[^1]: …` 条目，会用标题先搜 Crossref、再搜 PubMed。能识别 APA、Harvard、MLA、Vancouver 和 GB/T 7714 格式。搜到的论文和带 DOI 的一样核对；两边都搜不到的报**警告**而不是错误：可能不存在，也可能是标题写法不同。书（大多不在这两个库里）和中文文献保持「未核查」。搜索每秒一次（Crossref 的限制），所以 30 条这样的参考文献第一次要半分钟左右。加 `--no-search` 可以关掉。代码块和行内代码会跳过。中文引文只和中文文本比对：出处的摘要或网页是英文时，注明「无法逐字核对」，不报「没找到」。其他网页链接会抓取核查（遵守 `robots.txt`）：页面能否打开、引号里的原文是否出现在正文中。死链或引文找不到只报**警告**，绝不报错误——网页会变，有些站点也会拦机器人；页面读不了时保持「未核查」。
 
@@ -72,7 +72,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: wasabihu/claimcite@v0.3.0
+      - uses: wasabihu/claimcite@v0.4.0
         with:
           files: "docs/**/*.md"  # 默认：所有 Markdown 文件
           fail-on: error         # 也可以是 warning、never
@@ -89,7 +89,7 @@ jobs:
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/wasabihu/claimcite
-    rev: v0.3.0
+    rev: v0.4.0
     hooks:
       - id: claimcite
         # args: [--no-web]   # 更快：不抓普通网页链接

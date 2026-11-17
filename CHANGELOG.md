@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0 (2026-11-16)
+
+- **Multi-line & author-year extraction**: unwrap soft-wrapped paragraphs and indented multi-line reference items while preserving exact source line numbers; attach years and quotes written in the same sentence after an identifier; link unambiguous `(Author, Year)` and `Author (Year)` body quotes to reference-list entries.
+- **Zero-false-alarm extraction guards**: skip fenced code blocks and inline code spans in main identifier extraction, and trim unbalanced trailing brackets (`]`, `}`, `)`) and Markdown emphasis markers (`*`) from DOIs and URLs.
+- **PubMed Bookshelf & SICI DOI precision**: parse `<PubmedBookArticle>` records (such as StatPearls and NCBI Bookshelf chapters/reports) instead of reporting valid PMIDs as missing; quote `[doi]` terms in PubMed `esearch` so parenthesized DOIs resolve in PubMed; isolate `efetch` errors per chunk.
+- **Cross-file batch prefetch & cache split**: extract and deduplicate identifiers across all checked files before prefetching registries in one pass (`check_documents`); decouple CLI and MCP via `claimcite.workspace`; deduplicate ordinary web pages in memory per run without writing raw HTML to the 30-day SQLite registry cache, and prune expired cache rows on startup.
+- **Network & MCP hardening**: block private, loopback, and cloud-metadata IPs and non-HTTP(S) redirects (SSRF protection); stop reading binary/PDF streams after a 1 KB header peek; decode `GB2312`/`GBK`/`GB18030` web pages cleanly; restrict MCP `check_files` to supported text/Markdown suffixes.
+
 ## 0.3.0 (2026-11-15)
 
 - **Retraction detection**: flag retracted papers via PubMed (`Retracted Publication` / `RetractionIn`) and Crossref (`updated-by` / `relation.is-retracted-by`), reporting the retraction notice DOI when available without flagging retraction notices themselves.
