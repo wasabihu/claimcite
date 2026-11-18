@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>claimcite — Zero-dependency citation audit CLI &amp; MCP server</title>
-  <meta name="description" content="Verify every citation in a document against doi.org, Crossref, PubMed, and arXiv. Catch fabricated DOIs, retracted papers, and misquoted text. Zero runtime dependencies.">
+  <meta name="description" content="Verify every citation in a document against doi.org, Crossref, OpenAlex, PubMed, and arXiv. Catch fabricated DOIs, retracted papers, dangling numbered markers, and misquoted text. Zero runtime dependencies.">
   <meta property="og:title" content="claimcite — Verify every citation before it ships">
   <meta property="og:description" content="Zero-dependency Python CLI &amp; stdio MCP server for checking DOIs, PMIDs, arXiv IDs, retractions, and quoted text.">
   <meta property="og:type" content="website">
@@ -356,7 +356,7 @@
     <div class="wrap nav">
       <div class="brand">
         <span>claimcite</span>
-        <span class="brand-badge">v0.5.0 · MIT</span>
+        <span class="brand-badge">v0.6.0 · MIT</span>
       </div>
       <nav class="nav-links">
         <a href="#checks" class="hide-sm" data-en>Checks</a>
@@ -379,18 +379,18 @@
         <h1 data-en>Catch fabricated DOIs, retracted papers, and misquoted text before publishing.</h1>
         <h1 data-zh>发稿交审前，自动揪出假 DOI、已撤稿论文与错引原文。</h1>
         <p class="lead" data-en>
-          claimcite verifies every DOI, PMID, arXiv ID, and web link in Markdown or plain text directly against doi.org, Crossref, PubMed, and arXiv — no LLM API keys, no document uploads.
+          claimcite verifies every DOI, PMID, arXiv ID, and web link in Markdown or plain text directly against doi.org, Crossref, OpenAlex, PubMed, and arXiv — no LLM API keys, no document uploads.
         </p>
         <p class="lead" data-zh>
-          直接基于 doi.org、Crossref、PubMed 与 arXiv 公开注册表逐条核查 Markdown 或纯文本中的引用。零第三方运行时依赖，不需要大模型 Key，也不上传整篇文稿。
+          直接基于 doi.org、Crossref、OpenAlex、PubMed 与 arXiv 公开注册表逐条核查 Markdown 或纯文本中的引用。零第三方运行时依赖，不需要大模型 Key，也不上传整篇文稿。
         </p>
 
         <div class="cta-row">
           <a class="btn btn-primary" href="#setup" data-en>Use via CLI or MCP</a>
           <a class="btn btn-primary" href="#setup" data-zh>安装与接入 MCP</a>
           <a class="btn" href="https://github.com/wasabihu/claimcite" target="_blank" rel="noopener">GitHub Repo</a>
-          <a class="btn" href="https://github.com/wasabihu/claimcite/blob/main/benchmarks/README.md" target="_blank" rel="noopener" data-en>22-Case Benchmark</a>
-          <a class="btn" href="https://github.com/wasabihu/claimcite/blob/main/benchmarks/README.md" target="_blank" rel="noopener" data-zh>22 条基准评测</a>
+          <a class="btn" href="https://github.com/wasabihu/claimcite/blob/main/benchmarks/README.md" target="_blank" rel="noopener" data-en>26-Case Benchmark</a>
+          <a class="btn" href="https://github.com/wasabihu/claimcite/blob/main/benchmarks/README.md" target="_blank" rel="noopener" data-zh>26 条基准评测</a>
         </div>
 
         <div class="install-pill">
@@ -440,31 +440,31 @@
 
       <div class="grid-3">
         <div class="card">
-          <h3 data-en>Identifier Resolution</h3>
-          <h3 data-zh>多源标识符核验</h3>
-          <p data-en>Verifies DOIs (doi.org + Crossref), PubMed PMIDs, and arXiv IDs including 10.48550/arXiv.* via arXiv Atom batch queries.</p>
-          <p data-zh>支持 DOI（doi.org 与 Crossref）、PubMed PMID，以及 arXiv ID 与 10.48550/arXiv.* 批量接口。</p>
+          <h3 data-en>Identifier &amp; OpenAlex Batching</h3>
+          <h3 data-zh>多源标识符与 OpenAlex 批量查询</h3>
+          <p data-en>Verifies DOIs via doi.org, PubMed, Crossref, and 50-DOI OpenAlex batches (including DataCite DOIs), plus PMIDs and arXiv Atom queries.</p>
+          <p data-zh>支持 doi.org、PubMed、Crossref 及最多 50 条一批的 OpenAlex 检索（覆盖 DataCite 与跨学科 DOI），以及 PMID 与 arXiv 批量接口。</p>
         </div>
 
         <div class="card">
           <h3 data-en>Retraction Detection</h3>
           <h3 data-zh>撤稿检测（不误伤撤稿声明）</h3>
-          <p data-en>Flags retracted papers via PubMed Retracted Publication / RetractionIn and Crossref updated-by / relation.is-retracted-by without flagging retraction notices themselves.</p>
-          <p data-zh>结合 PubMed 与 Crossref 的撤稿关系字段标出被撤论文，同时避免把撤稿声明本身误判为被撤稿件。</p>
+          <p data-en>Flags retracted papers via PubMed Retracted Publication / RetractionIn, Crossref updated-by / relation.is-retracted-by, and OpenAlex without flagging retraction notices themselves.</p>
+          <p data-zh>结合 PubMed、Crossref 与 OpenAlex 的撤稿关系字段标出被撤论文，同时避免把撤稿声明本身误判为被撤稿件。</p>
         </div>
 
         <div class="card">
           <h3 data-en>Title, Year &amp; Quote Match</h3>
           <h3 data-zh>题名、年份与引号原文比对</h3>
-          <p data-en>Checks title similarity (stripping RETRACTED: prefixes), publication year (±1 tolerance), and verbatim quotes against abstracts, falling back to open-access full text (PMC / Europe PMC) or fetched web pages.</p>
-          <p data-zh>比对题名一致性、年份偏差（±1 年容差），以及引号内的原话是否出现在摘要或网页中；摘要未命中时按需回退核查开放获取全文（PubMed Central / Europe PMC）。</p>
+          <p data-en>Checks title similarity (stripping RETRACTED: prefixes), publication year (±1 tolerance), and verbatim quotes against abstracts (including reconstructed OpenAlex inverted indexes), open-access full text (PMC / Europe PMC), or web pages.</p>
+          <p data-zh>比对题名一致性、年份偏差（±1 年容差），以及引号原话是否出现在摘要（含 OpenAlex 倒排索引还原摘要）或网页中；未命中时按需核查开放获取全文（PMC / Europe PMC）。</p>
         </div>
 
         <div class="card">
-          <h3 data-en>Unlinked Reference Search</h3>
-          <h3 data-zh>无 DOI 参考文献检索</h3>
-          <p data-en>Parses APA, Harvard, MLA, Vancouver, GB/T 7714, numbered [1] lists, and footnotes [^1], searching titles in Crossref and PubMed.</p>
-          <p data-zh>自动识别常见中英文引文格式与 [1] / [^1] 尾注，即使没有写 DOI 也会按标题去 Crossref 和 PubMed 检索核实。</p>
+          <h3 data-en>Numbered Audit &amp; Title Search</h3>
+          <h3 data-zh>编号一致性与无 DOI 文献检索</h3>
+          <p data-en>Flags dangling body markers ([5], [^1]) and uncited bibliography entries with line numbers, and searches unlinked APA/Harvard/MLA/Vancouver/GB/T 7714 titles in Crossref and PubMed.</p>
+          <p data-zh>报出正文引用却缺失条目的 [5] / [^1] 与从未被引用的尾注/参考文献，并自动识别中英文格式，按标题检索核实无 DOI 文献。</p>
         </div>
 
         <div class="card">
@@ -521,10 +521,10 @@ claimcite check article.md --format json</code></pre>
         <div class="code-card">
           <div class="code-head">
             <span>GitHub Action</span>
-            <button class="copy-btn" data-copy="- uses: wasabihu/claimcite@v0.5.0&#10;  with:&#10;    files: &quot;docs/**/*.md&quot;&#10;    fail-on: error" type="button" data-en>Copy</button>
-            <button class="copy-btn" data-copy="- uses: wasabihu/claimcite@v0.5.0&#10;  with:&#10;    files: &quot;docs/**/*.md&quot;&#10;    fail-on: error" type="button" data-zh>复制</button>
+            <button class="copy-btn" data-copy="- uses: wasabihu/claimcite@v0.6.0&#10;  with:&#10;    files: &quot;docs/**/*.md&quot;&#10;    fail-on: error" type="button" data-en>Copy</button>
+            <button class="copy-btn" data-copy="- uses: wasabihu/claimcite@v0.6.0&#10;  with:&#10;    files: &quot;docs/**/*.md&quot;&#10;    fail-on: error" type="button" data-zh>复制</button>
           </div>
-          <pre><code>- uses: wasabihu/claimcite@v0.5.0
+          <pre><code>- uses: wasabihu/claimcite@v0.6.0
   with:
     files: "docs/**/*.md"
     fail-on: error</code></pre>
@@ -533,12 +533,12 @@ claimcite check article.md --format json</code></pre>
         <div class="code-card">
           <div class="code-head">
             <span>pre-commit Hook</span>
-            <button class="copy-btn" data-copy="repos:&#10;  - repo: https://github.com/wasabihu/claimcite&#10;    rev: v0.5.0&#10;    hooks:&#10;      - id: claimcite" type="button" data-en>Copy</button>
-            <button class="copy-btn" data-copy="repos:&#10;  - repo: https://github.com/wasabihu/claimcite&#10;    rev: v0.5.0&#10;    hooks:&#10;      - id: claimcite" type="button" data-zh>复制</button>
+            <button class="copy-btn" data-copy="repos:&#10;  - repo: https://github.com/wasabihu/claimcite&#10;    rev: v0.6.0&#10;    hooks:&#10;      - id: claimcite" type="button" data-en>Copy</button>
+            <button class="copy-btn" data-copy="repos:&#10;  - repo: https://github.com/wasabihu/claimcite&#10;    rev: v0.6.0&#10;    hooks:&#10;      - id: claimcite" type="button" data-zh>复制</button>
           </div>
           <pre><code>repos:
   - repo: https://github.com/wasabihu/claimcite
-    rev: v0.5.0
+    rev: v0.6.0
     hooks:
       - id: claimcite</code></pre>
         </div>
@@ -562,7 +562,7 @@ claimcite check article.md --format json</code></pre>
   </main>
 
   <footer class="wrap">
-    <div>claimcite v0.5.0 · MIT License</div>
+    <div>claimcite v0.6.0 · MIT License</div>
     <div class="foot-links">
       <a href="https://github.com/wasabihu/claimcite" target="_blank" rel="noopener">GitHub</a>
       <a href="https://pypi.org/project/claimcite/" target="_blank" rel="noopener">PyPI</a>

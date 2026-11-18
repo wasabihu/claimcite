@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.0 (2026-11-18)
+
+- **Numbered & footnote citation audit (`closes #11`)**: flag dangling `[n]` / `[^note]` markers in the body with no matching reference entry (reporting all cited line numbers in Markdown and `used_lines` in JSON) as well as numbered/footnote entries never cited in the text (`uncited: true` / `error`), while guarding against false alarms on statistical/IQR intervals (such as `60 [52-68] years`, `[0, 1]`, or `[1-5] scale`), quote-internal bracket numbers, Markdown reference links, and unnumbered bibliographies with no body markers.
+- **OpenAlex batch lookup & inverted-index abstracts (`closes #4`)**: query `api.openalex.org` in batches of up to 50 DOIs (`filter=doi:a|b|...`) whenever PubMed has no record and Crossref is missing metadata (such as DataCite DOIs) or lacks an abstract, reconstruct plain abstracts from `abstract_inverted_index`, and merge publication years, PMIDs/PMCIDs, and `is_retracted` signals (with `OPENALEX_API_KEY` and `OPENALEX_MAILTO` optional and stripped from cache keys and error logs).
+- **Expanded 26-case offline benchmark**: added 4 offline cases covering dangling body markers, uncited footnote references, non-Crossref DataCite resolution via OpenAlex, and Crossref-without-abstract enrichment via OpenAlex `abstract_inverted_index`, backed by 8 new real recorded fixtures in [`tests/fixtures/`](tests/fixtures/).
+
 ## 0.5.0 (2026-11-18)
 
 - **Open-access full-text quote fallback (PMC & Europe PMC, closes #10)**: when an abstract misses a quote (or no abstract is available in PubMed/Crossref), check NCBI PMC `efetch` and open-access Europe PMC JATS `fullTextXML` on demand—verified against real open-access cases (e.g. `10.1371/journal.pntd.0013247` and `10.1136/bmjgh-2024-018012`), skipping non-OA entries before calling `/fullTextXML`.
