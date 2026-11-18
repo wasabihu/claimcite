@@ -13,6 +13,7 @@ import html
 import json
 import os
 import re
+import sys
 import threading
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
@@ -21,6 +22,7 @@ from dataclasses import replace
 from urllib.error import HTTPError
 from urllib.parse import quote
 
+from .cache import cache_key
 from .models import Record, Reference
 from .net import NotFound, http_get
 from .text import compare_titles, title_ratio, words
@@ -255,7 +257,7 @@ def _safe(fn):
         try:
             return fn(arg)
         except Exception as e:  # noqa: BLE001 - one bad lookup must not sink the whole report
-            return LookupFailed(f"{type(e).__name__}: {e}")
+            return LookupFailed(f"{type(e).__name__}: {cache_key(str(e))}")
 
     return run
 
@@ -384,8 +386,11 @@ class Lookup:
                     )
                 )
                 ids += found.get("esearchresult", {}).get("idlist", [])
-            except Exception:  # noqa: BLE001, S110 - DOIs still fall through to Crossref below
-                pass
+            except Exception as e:  # noqa: BLE001 - DOIs still fall through to Crossref below
+                print(
+                    f"claimcite: PubMed lookup failed, falling back to Crossref ({type(e).__name__}: {cache_key(str(e))})",
+                    file=sys.stderr,
+                )
         for chunk in _chunks(list(dict.fromkeys(ids)), 150):
             try:
                 records.update(
@@ -396,7 +401,7 @@ class Lookup:
                     )
                 )
             except Exception as e:  # noqa: BLE001
-                err = LookupFailed(f"PubMed: {type(e).__name__}: {e}")
+                err = LookupFailed(f"PubMed: {type(e).__name__}: {cache_key(str(e))}")
                 for p in chunk:
                     pmid_errors[p] = err
 
@@ -435,7 +440,7 @@ class Lookup:
             try:
                 hit = best_match(ref, search(ref))
             except Exception as e:  # noqa: BLE001 - try the other registry before giving up
-                failed = LookupFailed(f"{via}: {type(e).__name__}: {e}")
+                failed = LookupFailed(f"{via}: {type(e).__name__}: {cache_key(str(e))}")
                 continue
             if hit:
                 return via, hit
@@ -506,7 +511,7 @@ class Lookup:
                 out.update({d: _safe(self._crossref)(d) for d in chunk})
                 continue
             except Exception as e:  # noqa: BLE001
-                out.update(dict.fromkeys(chunk, LookupFailed(f"Crossref: {type(e).__name__}: {e}")))
+                out.update(dict.fromkeys(chunk, LookupFailed(f"Crossref: {type(e).__name__}: {cache_key(str(e))}")))
                 continue
             found = {(item.get("DOI") or "").lower(): item for item in items}
             for d in chunk:
@@ -538,7 +543,7 @@ class Lookup:
                 body = self.http(url)
                 parsed = parse_arxiv(body)
             except Exception as e:  # noqa: BLE001
-                out.update(dict.fromkeys(chunk, LookupFailed(f"arXiv: {type(e).__name__}: {e}")))
+                out.update(dict.fromkeys(chunk, LookupFailed(f"arXiv: {type(e).__name__}: {cache_key(str(e))}")))
                 continue
             if store and parsed:
                 _cache_arxiv_entries(body, store)

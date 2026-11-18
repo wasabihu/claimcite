@@ -53,9 +53,18 @@ class NotFound(Exception):
     """The server answered 404."""
 
 
+_FAKE_IP_V4 = ipaddress.ip_network("198.18.0.0/15")
+
+
 def _is_global_ip(addr: str) -> bool:
     ip = ipaddress.ip_address(addr.split("%", 1)[0])
     return ip.is_global
+
+
+def _is_allowed_resolved_ip(addr: str) -> bool:
+    """Allow global IPs, plus RFC 2544 benchmarking range 198.18.0.0/15 used by TUN Fake-IP DNS."""
+    ip = ipaddress.ip_address(addr.split("%", 1)[0])
+    return ip.is_global or (isinstance(ip, ipaddress.IPv4Address) and ip in _FAKE_IP_V4)
 
 
 def _ensure_safe_url(url: str, *, resolve_dns: bool = False) -> None:
@@ -75,7 +84,7 @@ def _ensure_safe_url(url: str, *, resolve_dns: bool = False) -> None:
         infos = socket.getaddrinfo(
             host, parsed.port or (443 if parsed.scheme == "https" else 80), type=socket.SOCK_STREAM
         )
-        if not infos or not all(_is_global_ip(info[4][0]) for info in infos):
+        if not infos or not all(_is_allowed_resolved_ip(info[4][0]) for info in infos):
             raise urllib.error.URLError(f"host resolves to non-public IP: {host}")
 
 

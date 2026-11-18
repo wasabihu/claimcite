@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import socket
 import urllib.error
 
 import pytest
@@ -88,3 +89,37 @@ def test_ssrf_blocks_private_loopback_metadata_and_non_http_schemes():
         handler.redirect_request(
             req, None, 302, "Found", {}, f"{scheme_http}169.254.169.254/latest/meta-data/"
         )
+
+
+def test_ssrf_allows_tun_fake_ip_for_domains_but_blocks_literal_and_private_dns(monkeypatch):
+    scheme_http = "http://"
+    scheme_https = "https://"
+    fake_dns = {
+        "doi.org": [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("198.18.0.220", 443))],
+        "loopback.example": [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 443))],
+        "rfc1918a.example": [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.5", 443))],
+        "rfc1918c.example": [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("192.168.1.1", 443))],
+        "imds.example": [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("169.254.169.254", 80))],
+        "v6loop.example": [(socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("::1", 443, 0, 0))],
+        "v6ula.example": [(socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("fc00::1", 443, 0, 0))],
+    }
+    monkeypatch.setattr(net.socket, "getaddrinfo", lambda host, port, type=0: fake_dns[host])
+
+    # TUN Fake-IP (198.18.0.0/15) returned by DNS for a real domain is allowed.
+    net._ensure_safe_url(f"{scheme_https}doi.org/api/handles/10.1038/x", resolve_dns=True)
+
+    # Literal non-public IPs (including 198.18.x.x) remain blocked.
+    with pytest.raises(urllib.error.URLError):
+        net._ensure_safe_url(f"{scheme_http}198.18.0.220/admin", resolve_dns=True)
+
+    # Domains resolving to loopback, private networks, link-local IMDS, or IPv6 ULA remain blocked.
+    for host in (
+        "loopback.example",
+        "rfc1918a.example",
+        "rfc1918c.example",
+        "imds.example",
+        "v6loop.example",
+        "v6ula.example",
+    ):
+        with pytest.raises(urllib.error.URLError):
+            net._ensure_safe_url(f"{scheme_https}{host}/paper", resolve_dns=True)

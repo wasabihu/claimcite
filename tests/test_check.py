@@ -1,3 +1,5 @@
+import json
+import urllib.error
 from urllib.parse import quote
 
 import pytest
@@ -188,3 +190,34 @@ def test_pubmed_efetch_chunk_failure_preserves_succeeded_chunks():
     assert lookup.pmid("1000001") is None
     with pytest.raises(LookupFailed):
         lookup.pmid("1000150")
+
+
+def test_pubmed_esearch_failure_warns_on_stderr_without_leaking_api_key_and_falls_back_to_crossref(
+    monkeypatch, capsys
+):
+    monkeypatch.setenv("NCBI_API_KEY", "SECRET_NCBI_KEY")
+    crossref_item = json.loads((FIXTURES / "crossref_work.json").read_text(encoding="utf-8"))["message"]
+    crossref_filter = json.dumps({"status": "ok", "message": {"items": [crossref_item]}})
+    handle_ok = (FIXTURES / "handle_found.json").read_text(encoding="utf-8")
+
+    def http(url):
+        if url == "https://doi.org/api/handles/10.1007/s10654-019-00524-3":
+            return handle_ok
+        if "eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi" in url:
+            raise urllib.error.URLError(f"request failed for {url}")
+        if url == "https://api.crossref.org/works?filter=doi:10.1007/s10654-019-00524-3&rows=1":
+            return crossref_filter
+        raise AssertionError(f"unexpected url: {url}")
+
+    (f,) = check_text(
+        "Kim Y (2019). Coffee consumption and all-cause and cause-specific mortality: "
+        "a meta-analysis by potential modifiers. doi:10.1007/s10654-019-00524-3",
+        Lookup(http=http, workers=1),
+        web=False,
+        search=False,
+    )
+    assert f.status == "ok"
+    assert f.record.source == "crossref"
+    err = capsys.readouterr().err
+    assert "claimcite: PubMed" in err
+    assert "SECRET_NCBI_KEY" not in err
