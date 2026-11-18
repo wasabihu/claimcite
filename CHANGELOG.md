@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.0 (2026-11-18)
+
+- **Open-access full-text quote fallback (PMC & Europe PMC, closes #10)**: when an abstract misses a quote (or no abstract is available in PubMed/Crossref), check NCBI PMC `efetch` and open-access Europe PMC JATS `fullTextXML` on demand—verified against real open-access cases (e.g. `10.1371/journal.pntd.0013247` and `10.1136/bmjgh-2024-018012`), skipping non-OA entries before calling `/fullTextXML`.
+- **JATS markup & nested reference cleanup**: strip `<xref>` footnote markers and publisher `<ref-list>` sections nested inside `<body>` before matching quotes, while separating block tags cleanly (`<p>`, `<title>`, `<sec>`, `<td>`, `<li>`, etc.).
+- **Richer reporting & JSON metadata**: distinguish warnings checked against both abstract and open-access full text in English and Chinese reports, add `Record.pmcid` (`registry.pmcid`) and `Finding.fulltext_checked` (`fulltext_checked`) to JSON output while keeping `found_in_abstract` backward-compatible.
+- **Expanded 22-case offline benchmark**: added recorded real PMC open-access full-text hit and miss cases alongside 10 real fixtures in [`tests/fixtures/`](tests/fixtures/).
+
 ## 0.4.1 (2026-11-18)
 
 - **TUN Fake-IP DNS compatibility**: allow public hostnames whose DNS resolves into `198.18.0.0/15` (used by Clash/Mihomo/Surge TUN Fake-IP proxies) while continuing to block literal non-public IPs and domains resolving to loopback, RFC 1918 private networks, link-local IMDS, or IPv6 ULA addresses.
