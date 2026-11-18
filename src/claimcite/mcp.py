@@ -50,9 +50,10 @@ TOOLS: list[dict[str, Any]] = [
         "name": "check_citations",
         "description": (
             "Verify every citation in Markdown or plain text: check whether each DOI, PMID, "
-            "arXiv ID, web link, or bibliographic reference exists, whether the paper is "
-            "retracted, whether titles and years match, whether quoted text appears in "
-            "the abstract or web page, and whether numbered/footnote markers or entries are missing or uncited."
+            "arXiv ID, web link, or bibliographic reference exists (via PubMed, Crossref, OpenAlex, "
+            "and arXiv), whether the paper is retracted, whether titles and years match, whether "
+            "quoted text appears in the abstract, OA full text, or web page, and whether "
+            "numbered/footnote markers or entries are missing or uncited."
         ),
         "inputSchema": {
             "type": "object",
@@ -73,9 +74,9 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "check_files",
         "description": (
-            "Verify citations in one or more local Markdown/text files or folders. Returns a "
-            "Markdown or JSON report covering existence, retractions, title/year match, quotes, "
-            "and numbered/footnote reference consistency."
+            "Verify citations in one or more local Markdown/text files or folders against PubMed, "
+            "Crossref, OpenAlex, arXiv, and OA full text. Returns a Markdown or JSON report "
+            "covering existence, retractions, title/year match, quotes, and numbered/footnote consistency."
         ),
         "inputSchema": {
             "type": "object",

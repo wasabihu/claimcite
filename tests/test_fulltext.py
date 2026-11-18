@@ -80,6 +80,8 @@ def test_crossref_record_without_abstract_falls_back_to_europepmc_oa_fulltext():
             return esearch_empty
         if url == "https://api.crossref.org/works?filter=doi:10.1136/bmjgh-2024-018012&rows=1":
             return cr_filter
+        if url.startswith("https://api.openalex.org/works?filter=doi:10.1136/bmjgh-2024-018012"):
+            return '{"results": []}'
         if url.startswith("https://www.ebi.ac.uk/europepmc/webservices/rest/search?"):
             return epmc_search
         if url == "https://www.ebi.ac.uk/europepmc/webservices/rest/PMC11938218/fullTextXML":

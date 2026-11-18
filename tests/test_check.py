@@ -207,6 +207,8 @@ def test_pubmed_esearch_failure_warns_on_stderr_without_leaking_api_key_and_fall
             raise urllib.error.URLError(f"request failed for {url}")
         if url == "https://api.crossref.org/works?filter=doi:10.1007/s10654-019-00524-3&rows=1":
             return crossref_filter
+        if url.startswith("https://api.openalex.org/works?filter=doi:10.1007/s10654-019-00524-3"):
+            return '{"results": []}'
         raise AssertionError(f"unexpected url: {url}")
 
     (f,) = check_text(

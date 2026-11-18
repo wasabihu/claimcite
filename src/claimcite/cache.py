@@ -22,11 +22,14 @@ from pathlib import Path
 DB_NAME = "cache.sqlite3"
 DEFAULT_TTL_DAYS = 30
 # Credentials must not be written to disk, and changing them must not empty the cache.
-_SECRET_PARAM = re.compile(r"[?&]api_key=[^&]*")
+_SECRET_PARAM = re.compile(r"([?&])(?:api_key|mailto)=[^&\s\"')>]*")
 
 
 def cache_key(url: str) -> str:
-    return _SECRET_PARAM.sub("", url)
+    cleaned = _SECRET_PARAM.sub(r"\1", url)
+    cleaned = re.sub(r"\?&+", "?", cleaned)
+    cleaned = re.sub(r"&{2,}", "&", cleaned)
+    return re.sub(r"[?&]+(?=$|[\s\"')>])", "", cleaned)
 
 
 def default_cache_dir() -> Path:

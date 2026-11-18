@@ -3,6 +3,7 @@
 - doi.org handle API: does the DOI exist at all (any registrar)?
 - PubMed E-utilities: title, year, abstract, publication types, retractions
 - Crossref: title, year and retraction notices for DOIs that are not in PubMed
+- OpenAlex: fallback metadata and reconstructed abstracts (`abstract_inverted_index`) across all fields
 - arXiv Atom API: title, publication year and abstract for arXiv preprints and 10.48550 DOIs
 - Title search (Crossref, then PubMed) for references written out without a DOI or PMID
 """
@@ -30,6 +31,8 @@ from .text import compare_titles, title_ratio, words
 EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 EPMC_API = "https://www.ebi.ac.uk/europepmc/webservices/rest"
 CROSSREF_SEARCH = "https://api.crossref.org/works?rows=5&select=DOI,title,issued,published-print,published-online&query.bibliographic="
+OPENALEX_API = "https://api.openalex.org/works"
+OPENALEX_SELECT = "id,doi,ids,title,publication_year,is_retracted,abstract_inverted_index"
 ARXIV_API = "https://export.arxiv.org/api/query?id_list="
 _ATOM_NS = "{http://www.w3.org/2005/Atom}"
 _ARXIV_NS = "{http://arxiv.org/schemas/atom}"
@@ -255,6 +258,57 @@ def _crossref_url(doi: str) -> str:
     return f"https://api.crossref.org/works/{quote(doi, safe='/')}"
 
 
+def _norm_oa_doi(raw: str | None) -> str | None:
+    if not raw:
+        return None
+    cleaned = re.sub(r"^(?:https?://(?:dx\.)?doi\.org/|doi:)", "", raw.strip(), flags=re.IGNORECASE)
+    return cleaned.strip().lower() or None
+
+
+def reconstruct_abstract(inverted_index: dict | None) -> str | None:
+    """Rebuild plain abstract text from an OpenAlex ``abstract_inverted_index`` mapping."""
+    if not isinstance(inverted_index, dict) or not inverted_index:
+        return None
+    pairs: list[tuple[int, str]] = []
+    for token, positions in inverted_index.items():
+        if not isinstance(token, str) or not isinstance(positions, list):
+            continue
+        for pos in positions:
+            if isinstance(pos, int) and not isinstance(pos, bool) and pos >= 0:
+                pairs.append((pos, token))
+    if not pairs:
+        return None
+    pairs.sort(key=lambda item: item[0])
+    return clean_markup(" ".join(token for _, token in pairs))
+
+
+def _openalex_record(item: dict) -> Record:
+    pub_year = item.get("publication_year")
+    years = [pub_year] if isinstance(pub_year, int) and not isinstance(pub_year, bool) else []
+    ids = item.get("ids") or {}
+    pmid_m = re.search(r"(\d+)/?$", str(ids.get("pmid") or ""))
+    pmcid_m = re.search(r"(?:pmc)?(\d+)/?$", str(ids.get("pmcid") or ""), re.IGNORECASE)
+    return Record(
+        source="openalex",
+        title=clean_markup(item.get("title") or item.get("display_name")),
+        year=years[0] if years else None,
+        years=years,
+        doi=_norm_oa_doi(item.get("doi")),
+        pmid=pmid_m.group(1) if pmid_m else None,
+        pmcid=_norm_pmcid(f"PMC{pmcid_m.group(1)}") if pmcid_m else None,
+        abstract=reconstruct_abstract(item.get("abstract_inverted_index")),
+        retracted=bool(item.get("is_retracted")),
+    )
+
+
+def parse_openalex(payload: str) -> Record:
+    return _openalex_record(json.loads(payload))
+
+
+def _openalex_url(doi: str) -> str:
+    return f"{OPENALEX_API}/https://doi.org/{quote(doi, safe='/')}?select={OPENALEX_SELECT}"
+
+
 def _arxiv_url(arxiv_id: str) -> str:
     return f"{ARXIV_API}{quote(arxiv_id, safe='/')}&max_results=1"
 
@@ -310,6 +364,8 @@ def _safe(fn):
     def run(arg):
         try:
             return fn(arg)
+        except AssertionError:
+            raise
         except Exception as e:  # noqa: BLE001 - one bad lookup must not sink the whole report
             return LookupFailed(f"{type(e).__name__}: {cache_key(str(e))}")
 
@@ -336,6 +392,14 @@ class Lookup:
         self._ft_inflight: dict[str, threading.Event] = {}
         key = os.environ.get("NCBI_API_KEY")
         self._ncbi_key = f"&api_key={key}" if key else ""
+        oa_mailto = os.environ.get("OPENALEX_MAILTO", "").strip()
+        oa_key = os.environ.get("OPENALEX_API_KEY", "").strip()
+        oa_parts = []
+        if oa_mailto:
+            oa_parts.append(f"&mailto={quote(oa_mailto, safe='')}")
+        if oa_key:
+            oa_parts.append(f"&api_key={quote(oa_key, safe='')}")
+        self._openalex_params = "".join(oa_parts)
 
     def web_http(self, url: str) -> str:
         """Fetch an ordinary web URL once per Lookup run without writing HTML to the 30-day disk cache."""
@@ -387,7 +451,7 @@ class Lookup:
         """Fetch open-access JATS full text on demand from PMC / Europe PMC."""
         if record.pmcid:
             key = record.pmcid.upper()
-        elif record.source == "crossref" and record.doi:
+        elif record.source in ("crossref", "openalex") and record.doi:
             key = f"doi:{record.doi.lower()}"
         else:
             return None
@@ -554,9 +618,42 @@ class Lookup:
             if d in by_doi:
                 self._cache[("doi", d)] = by_doi[d]
 
-        # 3. Everything else: Crossref, a batch at a time. It allows one request at a time per client.
-        for d, r in self._crossref_many(rest).items():
-            self._cache[("doi", d)] = r
+        # 3. Crossref (20 DOIs/request), then OpenAlex (50 DOIs/request) for misses or missing abstracts.
+        cr_records = self._crossref_many(rest)
+        need_oa = [
+            d
+            for d in rest
+            if isinstance(cr_records[d], LookupFailed)
+            or cr_records[d].source == "doi.org"
+            or not cr_records[d].abstract
+        ]
+        oa_records = self._openalex_many(need_oa) if need_oa else {}
+        warned_oa = False
+        for d in rest:
+            cr = cr_records[d]
+            oa = oa_records.get(d)
+            if isinstance(oa, LookupFailed):
+                if not warned_oa:
+                    print(f"claimcite: OpenAlex lookup failed ({oa})", file=sys.stderr)
+                    warned_oa = True
+                self._cache[("doi", d)] = cr
+            elif isinstance(cr, LookupFailed) or cr.source == "doi.org":
+                self._cache[("doi", d)] = oa if isinstance(oa, Record) else cr
+            elif isinstance(oa, Record):
+                years = list(cr.years)
+                if oa.year and oa.year not in years:
+                    years.append(oa.year)
+                self._cache[("doi", d)] = replace(
+                    cr,
+                    year=cr.year or oa.year,
+                    years=years,
+                    pmid=cr.pmid or oa.pmid,
+                    pmcid=cr.pmcid or oa.pmcid,
+                    abstract=cr.abstract or oa.abstract,
+                    retracted=cr.retracted or oa.retracted,
+                )
+            else:
+                self._cache[("doi", d)] = cr
 
     def find(self, ref: Reference) -> tuple[str, Record] | None:
         """Search for a reference written out without an identifier: ("crossref" | "pubmed", record).
@@ -663,6 +760,59 @@ class Lookup:
                 if store:
                     store(_crossref_url(d), json.dumps({"message": item}))
                 out[d] = _crossref_record(item)
+        return out
+
+    def _openalex(self, doi: str) -> Record | None:
+        try:
+            item = json.loads(self.http(f"{_openalex_url(doi)}{self._openalex_params}"))
+        except NotFound:
+            return None
+        return _openalex_record(item)
+
+    def _openalex_many(self, dois: list[str]) -> dict[str, Record | LookupFailed | None]:
+        """Batch up to 50 DOIs per OpenAlex filter request; cache each work under its own URL."""
+        cached = getattr(self.http, "get", None)
+        store = getattr(self.http, "put", None)
+        out: dict[str, Record | LookupFailed | None] = {}
+        todo: list[str] = []
+        for d in dois:
+            body = cached(_openalex_url(d)) if cached else None
+            if body is not None:
+                out[d] = _safe(parse_openalex)(body)
+            elif "|" in d or "," in d:
+                out[d] = _safe(self._openalex)(d)
+            else:
+                todo.append(d)
+        for chunk in _chunks(todo, 50):
+            joined = "|".join(chunk)
+            url = (
+                f"{OPENALEX_API}?filter=doi:{quote(joined, safe=':/|()')}"
+                f"&per-page={len(chunk)}&select={OPENALEX_SELECT}{self._openalex_params}"
+            )
+            try:
+                items = json.loads(self.http(url)).get("results") or []
+            except AssertionError:
+                raise
+            except HTTPError as e:
+                if e.code != 400:
+                    out.update(dict.fromkeys(chunk, LookupFailed(f"OpenAlex: HTTP {e.code}")))
+                    continue
+                out.update({d: _safe(self._openalex)(d) for d in chunk})
+                continue
+            except Exception as e:  # noqa: BLE001
+                out.update(
+                    dict.fromkeys(chunk, LookupFailed(f"OpenAlex: {type(e).__name__}: {cache_key(str(e))}"))
+                )
+                continue
+            found = {doi_k: item for item in items if (doi_k := _norm_oa_doi(item.get("doi")))}
+            for d in chunk:
+                item = found.get(d.lower())
+                if item is None:
+                    out[d] = None
+                    continue
+                if store:
+                    store(_openalex_url(d), json.dumps(item))
+                out[d] = _openalex_record(item)
         return out
 
     def _arxiv_many(self, arxiv_ids: list[str]) -> dict[str, Record | LookupFailed | None]:

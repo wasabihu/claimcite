@@ -51,6 +51,7 @@ def test_crossref_retracted_doi_strips_retracted_title_prefix():
             "api/handles/10.1016/s0140-6736%2897%2911096-0": "handle_retracted.json",
             _doi_route(doi): "esearch_empty.json",
             "api.crossref.org/works?filter=doi:10.1016/s0140-6736(97)11096-0&rows=1": "crossref_retracted_filter.json",
+            "api.openalex.org/works?filter=doi:10.1016/s0140-6736(97)11096-0": "openalex_retracted_filter.json",
         }
     )
     text = (
@@ -76,6 +77,7 @@ def test_retraction_notice_itself_is_not_flagged_retracted():
             "api/handles/10.1016/s0140-6736%2810%2960175-4": "handle_retraction_notice.json",
             _doi_route(doi): "esearch_empty.json",
             "api.crossref.org/works?filter=doi:10.1016/s0140-6736(10)60175-4&rows=1": "crossref_retraction_notice_filter.json",
+            "api.openalex.org/works?filter=doi:10.1016/s0140-6736(10)60175-4": "openalex_retraction_notice_filter.json",
             "api.crossref.org/works/10.9999/": NotFound,
         }
     )

@@ -23,6 +23,7 @@ USER_AGENT = f"claimcite/{__version__} (+https://github.com/wasabihu/claimcite)"
 _MIN_INTERVAL = {
     "eutils.ncbi.nlm.nih.gov": 0.4,
     "api.crossref.org": 1.0,
+    "api.openalex.org": 0.2,
     "export.arxiv.org": 3.0,
     "www.ebi.ac.uk": 0.4,
 }

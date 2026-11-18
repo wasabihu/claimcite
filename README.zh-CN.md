@@ -30,10 +30,10 @@ $ claimcite check examples/sample.md --lang zh
 | 检查 | 方法 |
 |---|---|
 | DOI / PMID / arXiv 编号是否存在 | doi.org 句柄接口（覆盖所有 DOI 注册机构）、PubMed、arXiv Atom 接口（含 `10.48550/arXiv.*`） |
-| 论文是否已被撤稿 | PubMed `Retracted Publication` / `RetractionIn`、Crossref `updated-by` 与 `relation.is-retracted-by` |
-| 文中写的标题和编号对应的文献是否一致 | 先查 PubMed，再查 Crossref 或 arXiv，模糊匹配（自动剥离出版商 `RETRACTED:` 前缀） |
+| 论文是否已被撤稿 | PubMed `Retracted Publication` / `RetractionIn`、Crossref `updated-by` 与 `relation.is-retracted-by`、OpenAlex `is_retracted` |
+| 文中写的标题和编号对应的文献是否一致 | 先查 PubMed，再查 Crossref / OpenAlex 或 arXiv，模糊匹配（自动剥离出版商 `RETRACTED:` 前缀） |
 | 年份是否一致（允许差一年：网络首发和印刷出版常差一年） | 同上（arXiv 同时核对首版与更新年份） |
-| 引号（`"…"`、`“…”`、`「…」`）里的原文是否出现在摘要中 | PubMed / Crossref / arXiv 摘要；未命中时按需回退核查开放获取全文（PubMed Central、Europe PMC） |
+| 引号（`"…"`、`“…”`、`「…」`）里的原文是否出现在摘要中 | PubMed / Crossref / OpenAlex（`abstract_inverted_index` 还原）/ arXiv 摘要；未命中时按需回退核查开放获取全文（PubMed Central、Europe PMC） |
 | 研究类型：荟萃分析、随机对照试验、观察性研究、动物研究等 | PubMed 的文献类型和 MeSH 主题词 |
 | 网页链接能否打开、是否包含引号里的原文 | 抓取页面（遵守 `robots.txt`）、剥离 HTML、规范化空白 |
 | 没有 DOI / PMID 的参考文献是否存在 | 用标题先搜 Crossref，再搜 PubMed；找到后和其他论文一样核对 |
@@ -55,7 +55,7 @@ claimcite check 文章.md --lang zh     # 中文报告
 claimcite check 文章.md --format json # 给脚本和 CI 用
 ```
 
-只要有一条引用出错，退出码就是 1，可以直接放进 CI 当检查关卡（用 `--fail-on warning|never` 调整严格程度）。设置环境变量 `NCBI_API_KEY` 可以提高 PubMed 的访问频率上限。
+只要有一条引用出错，退出码就是 1，可以直接放进 CI 当检查关卡（用 `--fail-on warning|never` 调整严格程度）。设置环境变量 `NCBI_API_KEY` 可以提高 PubMed 的访问频率上限；OpenAlex 免 Key 开箱可用（`OPENALEX_API_KEY` 与 `OPENALEX_MAILTO` 为可选配置）。
 
 ### 查询缓存
 
@@ -117,7 +117,7 @@ repos:
 
 ### 离线评测基准
 
-运行基于真实录制 API 响应的 24 条离线基准集（无需联网）：
+运行基于真实录制 API 响应的 26 条离线基准集（无需联网）：
 
 ```bash
 uv run python benchmarks/run.py
@@ -132,10 +132,10 @@ uv run python benchmarks/run.py
 - [x] **网页链接**：检查网页还能打开，并且确实包含引号里的原文
 - [x] **没有编号的参考文献**：按标题查找（Crossref、PubMed）
 - [x] **撤稿**：基于 Crossref（`updated-by` / `relation`）和 PubMed（`Retracted Publication`）标出已撤稿论文
-- [ ] **更多数据源**：OpenAlex、Semantic Scholar、知网/万方元数据（已支持 `arXiv` 与 DataCite `10.48550/arXiv.*`）
+- [ ] **更多数据源**：Semantic Scholar、知网/万方元数据（已支持 `OpenAlex`、`arXiv` 与 DataCite `10.48550/arXiv.*`）
 - [x] **全文**：在开放获取的全文里找引文（PubMed Central、Europe PMC），不只看摘要
 - [ ] **支持度判断**：文献是否支持这句话？做成可插拔的模型判断，优先支持本地模型
-- [x] **基准测试集**：内置 [`benchmarks/`](benchmarks/README.md) 24 条真实录制离线评测集（欢迎补充更多公开语料）
+- [x] **基准测试集**：内置 [`benchmarks/`](benchmarks/README.md) 26 条真实录制离线评测集（欢迎补充更多公开语料）
 - [x] **编号引用**：`[1]`、`[1-3]` 和脚注 `[^1]` 对应到文末参考文献（含悬空编号与未引用条目检查）
 - [ ] **更多输入格式**：BibTeX，以及 Word / PDF 输入
 - [x] **集成**：GitHub Action、pre-commit 钩子、stdio MCP 服务（`claimcite mcp`）、Agent Skill
