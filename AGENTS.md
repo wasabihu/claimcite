@@ -30,16 +30,16 @@ Both must pass. Tests run offline in well under a second.
 
 | File | Job |
 |---|---|
-| `src/claimcite/extract.py` | Unwrap paragraphs/list items, find citations (DOI, PMID, arXiv, URL, reference-list entries) and attach titles, years and quotes (`[1]` and author-year) |
+| `src/claimcite/extract.py` | Unwrap paragraphs/list items, find citations (DOI, PMID, arXiv, URL, reference-list entries, dangling `[n]`/`[^n]` markers) and attach titles, years, quotes and cited line numbers (`[1]` and author-year) |
 | `src/claimcite/sources.py` | Talk to doi.org, PubMed (articles & Bookshelf), Crossref and arXiv; parse responses into `Record` |
-| `src/claimcite/check.py` | Batch-prefetch across documents and compare stated metadata with `Record` (`ok` / `warning` / `error` / `unchecked`) |
+| `src/claimcite/check.py` | Batch-prefetch across documents and compare stated metadata with `Record` (`ok` / `warning` / `error` / `unchecked`), flagging dangling or uncited numbered references |
 | `src/claimcite/workspace.py` | Shared document discovery and multi-file report formatting for CLI and MCP |
 | `src/claimcite/mcp.py` | Zero-dependency stdio MCP server (`claimcite mcp`) |
 | `src/claimcite/report.py` | Markdown (English and Chinese) and JSON output |
 | `src/claimcite/net.py` | HTTP with retries, per-host rate limits, SSRF guards, binary early-exit and charset decoding |
 | `src/claimcite/cache.py` | 30-day SQLite cache for registry responses with automatic expiry pruning |
 | `src/claimcite/web.py` | Fetch web pages (respecting `robots.txt`) and look for quoted text |
-| `benchmarks/` | 22-case offline verification benchmark backed by recorded fixtures |
+| `benchmarks/` | 24-case offline verification benchmark backed by recorded fixtures |
 | `tests/fixtures/` | Real responses recorded from the services |
 
 ### Rules
@@ -85,16 +85,16 @@ uv run ruff check src tests benchmarks
 
 | 文件 | 负责 |
 |---|---|
-| `src/claimcite/extract.py` | 合并折行段落与列表项，提取引用（DOI、PMID、arXiv、网址、无编号参考文献）并关联标题、年份与引文（支持 `[1]` 与作者-年份回链） |
+| `src/claimcite/extract.py` | 合并折行段落与列表项，提取引用（DOI、PMID、arXiv、网址、无编号参考文献、悬空编号角标 `[n]`/`[^n]`）并关联标题、年份、引文与引用行号（支持 `[1]` 与作者-年份回链） |
 | `src/claimcite/sources.py` | 访问 doi.org、PubMed（含 Bookshelf）、Crossref 与 arXiv，解析成 `Record` |
-| `src/claimcite/check.py` | 跨文档批量预取并比对文中描述与 `Record`，判定通过、警告、错误或未核查 |
+| `src/claimcite/check.py` | 跨文档批量预取并比对文中描述与 `Record`，判定通过、警告、错误或未核查（含悬空编号与未引用条目错误） |
 | `src/claimcite/workspace.py` | CLI 与 MCP 共用的文档发现与多文件报告组装 |
 | `src/claimcite/mcp.py` | 零第三方依赖的 stdio MCP 服务端（`claimcite mcp`） |
 | `src/claimcite/report.py` | Markdown（中英文）和 JSON 输出 |
 | `src/claimcite/net.py` | 带重试、按站点限速、SSRF 拦截、二进制早退与编码识别的网络请求 |
 | `src/claimcite/cache.py` | 注册表响应 30 天 SQLite 磁盘缓存（启动自动清理过期记录） |
 | `src/claimcite/web.py` | 抓取网页（遵守 `robots.txt`），查找引文 |
-| `benchmarks/` | 基于真实录制响应的 22 条离线评测基准 |
+| `benchmarks/` | 基于真实录制响应的 24 条离线评测基准 |
 | `tests/fixtures/` | 从真实服务录下来的响应 |
 
 ### 规则

@@ -54,8 +54,10 @@ LEADING_NOISE = re.compile(
 
 # A reference-list entry: "[1] …", "[^note]: …", "1. …" or "1) …" at the start of a line.
 DEF_RE = re.compile(r"^\s*(?:\[(\^?[\w-]+)\]:?|(\d{1,3})[.)])\s+")
-# A marker in the body: [1], [^note], [1, 2], [1-3]. Not a Markdown link "[x](…)", "[x][y]" or "[x]:".
-MARK_RE = re.compile(r"\[(\^[\w-]+|\d{1,3}(?:\s*[-–,]\s*\d{1,3})*)\](?![(:\[])")
+_BRACKET_DEF_RE = re.compile(r"^\s*\[\^?[\w-]+\]:?\s")
+_MARK_INNER = r"\^[\w-]+|\d{1,3}(?:\s*[-–,]\s*\d{1,3})*"
+# A marker in the body: [1], [^note], [1, 2], [1-3], or adjacent [1][2]. Not Markdown "[x](…)", "[x][ref]" or "[x]:".
+MARK_RE = re.compile(rf"\[({_MARK_INNER})\](?![(:]|\[(?!(?:{_MARK_INNER})\]))")
 FENCE_RE = re.compile(r"^\s*(```|~~~)")
 INLINE_CODE_RE = re.compile(r"`[^`]*`")
 SENTENCE_END = re.compile(r"[。！？!?]|\.(?=\s|$)")
@@ -64,12 +66,18 @@ CLAUSE_STOP = re.compile(r"[。！？!?；;]|(?<!\b(?:al|vs|cf))\.(?=\s|$)", re.
 _TRAILING = ".,;:!?"
 _PAIRS = ((")", "("), ("]", "["), ("}", "{"))
 
-# A heading that starts a reference list: "## References", "**参考文献**", "Sources:" on its own line.
-REF_HEADING = re.compile(
-    r"^\s*(?:#{1,6}\s*)?(?:\*\*)?\s*(?:\d+[.、]?\s*)?"
+# A heading that starts a reference list: "## References", "📄 参考文献", "参考文献与出处", "Sources:" on its own line.
+_REF_NOUN = (
     r"(?:references?|bibliography|works cited|literature cited|cited literature|sources|citations"
     r"|参考文献|参考资料|引用文献|文献|资料来源|引用来源|出处)"
-    r"\s*[:：]?\s*(?:\*\*)?\s*$",
+)
+REF_HEADING = re.compile(
+    r"^\s*(?:#{1,6}\s*)?(?:\*\*)?\s*(?:[^\x00-\x7f\u3000-\u303f\uff00-\uffef\u4e00-\u9fff]+\s*)?"
+    r"(?:\d+[.、]?\s*)?"
+    + _REF_NOUN
+    + r"(?:\s*(?:and|&|与|及|和|/)\s*"
+    + _REF_NOUN
+    + r")?\s*[:：]?\s*(?:\*\*)?\s*$",
     re.IGNORECASE,
 )
 HEADING = re.compile(r"^\s*#{1,6}\s")
@@ -335,7 +343,7 @@ def extract_references(text: str) -> list[Reference]:
     for b_idx, blk in enumerate(blocks):
         if b_idx in blocks_with_ids or blk.is_table:
             continue
-        labelled = blk.label is not None and bool(re.match(r"^\s*\[\^?[\w-]+\]:?\s", blk.text))
+        labelled = blk.label is not None and bool(_BRACKET_DEF_RE.match(blk.text))
         if not (blk.in_ref_section or labelled):
             continue
         entry = LIST_MARK.sub("", blk.text, count=1).replace("*", "").strip()
@@ -359,8 +367,8 @@ def extract_references(text: str) -> list[Reference]:
         refs.append(ref)
         block_first_ref.setdefault(b_idx, ref)
 
+    _attach_numbered_citations(blocks, block_first_ref, refs, _has_ref_heading(text))
     refs.sort(key=lambda r: r.line)
-    _attach_numbered_quotes(blocks, block_first_ref)
     _attach_author_year_quotes(blocks, blocks_with_ids, refs)
     return refs
 
@@ -403,27 +411,161 @@ def _labels(raw: str) -> list[str]:
     return out
 
 
-def _attach_numbered_quotes(blocks: list[_Block], block_first_ref: dict[int, Reference]) -> None:
+def _has_ref_heading(text: str) -> bool:
+    fenced = False
+    for raw_line in text.splitlines():
+        if FENCE_RE.match(raw_line):
+            fenced = not fenced
+            continue
+        if not fenced and REF_HEADING.match(raw_line):
+            return True
+    return False
+
+
+def _looks_like_interval(
+    text: str, start: int, end: int, raw: str, defined_labels: dict[str, int]
+) -> bool:
+    """True when ``[a-b]`` or ``[a, b]`` reads like a numeric range/IQR rather than citations."""
+    if raw.startswith("^"):
+        return False
+    for part in re.split(r"\s*,\s*", raw):
+        rm = re.fullmatch(r"(\d+)\s*[-–]\s*(\d+)", part.strip())
+        if rm and (int(rm[2]) <= int(rm[1]) or int(rm[2]) - int(rm[1]) >= 50):
+            return True
+    labels = _labels(raw)
+    if labels and labels[0] == "0" and "0" not in defined_labels:
+        return True
+    if re.search(r"[-–,]", raw):
+        prefix = text[max(0, start - 30) : start]
+        suffix = text[end : end + 15]
+        if re.search(
+            r"\b(?:iqr|ci|median|mean|sd|se|range|interval|scale|aged?|between)\b[^.;!?()]{0,15}$",
+            prefix,
+            re.IGNORECASE,
+        ):
+            return True
+        if re.match(r"\s*(?:%|years?|months?|weeks?|days?|mg|kg|ml|mm|cm|scale|range)\b", suffix, re.IGNORECASE):
+            return True
+        # A trailing number like "in 2020 [1, 2]" may still be a citation when its labels are defined.
+        if not any(lbl in defined_labels for lbl in labels) and re.search(r"\d(?:[.,·]\d+)?%?\s*$", prefix):
+            return True
+    return False
+
+
+def _attach_numbered_citations(
+    blocks: list[_Block],
+    block_first_ref: dict[int, Reference],
+    refs: list[Reference],
+    saw_ref_heading: bool,
+) -> None:
+    explicit_defs = [
+        b_idx
+        for b_idx, blk in enumerate(blocks)
+        if blk.label is not None and (blk.in_ref_section or _BRACKET_DEF_RE.match(blk.text))
+    ]
+    selected_defs = (
+        explicit_defs
+        if explicit_defs or saw_ref_heading
+        else [
+            b_idx
+            for b_idx, blk in enumerate(blocks)
+            if blk.label is not None and b_idx in block_first_ref and not MARK_RE.search(blk.text)
+        ]
+    )
+
     by_label: dict[str, Reference] = {}
+    defined_labels: dict[str, int] = {}
     def_blocks: set[int] = set()
-    for b_idx, blk in enumerate(blocks):
+    for b_idx in selected_defs:
+        lbl = blocks[b_idx].label
+        assert lbl is not None
+        defined_labels.setdefault(lbl, b_idx)
+        def_blocks.add(b_idx)
         ref = block_first_ref.get(b_idx)
-        if blk.label and ref:
-            by_label.setdefault(blk.label, ref)
-            def_blocks.add(b_idx)
-    if not by_label:
-        return
+        if ref and lbl not in by_label:
+            by_label[lbl] = ref
+            ref.label = lbl
+
+    used_lines_by_label: dict[str, set[int]] = {}
+    link_used_labels: set[str] = set()
+    dangling_lines: dict[str, set[int]] = {}
+    dangling_quotes: dict[str, list[str]] = {}
+    saw_numeric_body_marker = False
+    has_numeric_defs = any(not k.startswith("^") for k in defined_labels)
+
     for b_idx, blk in enumerate(blocks):
         if b_idx in def_blocks or blk.in_ref_section:
             continue
+        quote_spans = [(qm.start(), qm.end()) for rx in QUOTE_RES for qm in rx.finditer(blk.text)]
         prev = 0
+        prev_mark_end = -1
         for m in MARK_RE.finditer(blk.text):
-            quotes = _quotes_before(blk.text, prev, m.start())
-            prev = m.end()
-            for label in _labels(m.group(1)):
-                ref = by_label.get(label)
-                if ref:
-                    ref.quotes += [q for q in quotes if q not in ref.quotes]
+            if _inside_link(blk.text, m.start()):
+                continue
+            # Treat "[text][1]" as a Markdown reference link, unlike adjacent "[1][2]".
+            if m.start() > 0 and blk.text[m.start() - 1] == "]" and m.start() != prev_mark_end:
+                link_used_labels.update(_labels(m.group(1)))
+                prev = m.end()
+                continue
+            prev_mark_end = m.end()
+            raw = m.group(1)
+            labels = _labels(raw)
+            lineno = blk.char_lines[m.start()] if m.start() < len(blk.char_lines) else blk.start_line
+            inside_quote = any(qs < m.start() and m.end() < qe for qs, qe in quote_spans)
+            quotes = [] if inside_quote else _quotes_before(blk.text, prev, m.start())
+            if not inside_quote:
+                prev = m.end()
+            if _looks_like_interval(blk.text, m.start(), m.end(), raw, defined_labels):
+                continue
+            for lbl in labels:
+                if not lbl.startswith("^") and not inside_quote:
+                    saw_numeric_body_marker = True
+                if lbl in defined_labels:
+                    used_lines_by_label.setdefault(lbl, set()).add(lineno)
+                    ref = by_label.get(lbl)
+                    if ref and quotes:
+                        ref.quotes += [q for q in quotes if q not in ref.quotes]
+                else:
+                    if inside_quote and not lbl.startswith("^"):
+                        continue
+                    if lbl.startswith("^") or saw_ref_heading or has_numeric_defs:
+                        dangling_lines.setdefault(lbl, set()).add(lineno)
+                        dq = dangling_quotes.setdefault(lbl, [])
+                        dq += [q for q in quotes if q not in dq]
+
+    for lbl, def_b_idx in defined_labels.items():
+        lines = sorted(used_lines_by_label.get(lbl, ()))
+        is_cited = bool(lines) or (lbl in link_used_labels)
+        should_check_uncited = lbl.startswith("^") or saw_numeric_body_marker
+        is_uncited = should_check_uncited and not is_cited
+        if ref := by_label.get(lbl):
+            ref.used_lines = lines
+            ref.uncited = is_uncited
+        elif is_uncited:
+            entry = LIST_MARK.sub("", blocks[def_b_idx].text, count=1).replace("*", "").strip()
+            refs.append(
+                Reference(
+                    "text",
+                    entry,
+                    blocks[def_b_idx].start_line,
+                    context=entry,
+                    label=lbl,
+                    uncited=True,
+                )
+            )
+
+    for lbl, lines in dangling_lines.items():
+        sorted_lines = sorted(lines)
+        refs.append(
+            Reference(
+                "marker",
+                lbl,
+                sorted_lines[0],
+                quotes=dangling_quotes.get(lbl, []),
+                label=lbl,
+                used_lines=sorted_lines,
+            )
+        )
 
 
 def _extract_first_surname(context: str) -> str | None:

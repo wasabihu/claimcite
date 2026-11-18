@@ -21,6 +21,16 @@ _RETRACTED_PREFIX = re.compile(
 
 
 def check_reference(ref: Reference, lookup: Lookup, web: bool = True, search: bool = True) -> Finding:
+    if ref.kind == "marker":
+        return Finding(ref, status="error")
+    f = _check_source_reference(ref, lookup, web=web, search=search)
+    if ref.uncited:
+        f.uncited = True
+        f.status = "error"
+    return f
+
+
+def _check_source_reference(ref: Reference, lookup: Lookup, web: bool = True, search: bool = True) -> Finding:
     if ref.kind == "text":
         return _check_text_reference(ref, lookup, search)
     if ref.kind == "url" and not web:

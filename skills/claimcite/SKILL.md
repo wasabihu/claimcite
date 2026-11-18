@@ -67,7 +67,7 @@ Exposed read-only MCP tools:
 
 ## How to interpret findings and fix the draft
 
-- **Error (`exists: false`, `title_match: "mismatch"`, `retracted: true`)**: High-confidence problem. Replace or remove the nonexistent identifier, fix a swapped DOI/arXiv ID attached to the wrong paper, or remove/replace a retracted paper (unless intentionally citing its retraction notice).
+- **Error (`exists: false`, `title_match: "mismatch"`, `retracted: true`, `kind: "marker"`, `uncited: true`)**: High-confidence problem. Replace or remove the nonexistent identifier, fix a swapped DOI/arXiv ID attached to the wrong paper, remove/replace a retracted paper (unless intentionally citing its retraction notice), or fix a dangling numbered/footnote citation (`kind: "marker"`) or uncited reference entry (`uncited: true`).
 - **Warning (`not_found`, `year_match: false`, `quote_missing`, `web.state: "dead"`)**: Needs human check. An unlinked reference may use an alternate title spelling, a quote may appear only in a paywalled full text (when not in open-access PMC/Europe PMC), or a website may block bots.
 - **Not checked (`cjk`, `book`, `search_off`, `web.state: "blocked"`)**: Expected when citing Chinese-language journals (CNKI/Wanfang have no open API), books, or pages disallowed by `robots.txt`. Do **not** treat Chinese paraphrases of English papers as missing quotes (`found_in_abstract: null` is expected).
 - **Important limit**: Unquoted paraphrases are not checked by `claimcite`; only direct quotes in `"..."`, `“...”`, or `「...」` are matched against abstracts, open-access full text (PMC/Europe PMC), or pages.

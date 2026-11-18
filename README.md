@@ -37,11 +37,12 @@ $ claimcite check examples/sample.md
 | Study type: meta-analysis, RCT, observational, animal… | PubMed publication types and MeSH |
 | A web link is alive and contains the quoted text | fetch the page (respecting `robots.txt`), strip HTML, normalise whitespace |
 | A reference with no DOI or PMID exists | search the title in Crossref, then PubMed; then check it like any other paper |
+| Numbered and footnote citations match the reference list | report body markers like `[5]` or `[^1]` with no entry (with line numbers) and numbered/footnote entries never cited in the text |
 
 It reads Markdown or plain text (unwrapping soft-wrapped lines and indented reference items) and understands the common
 `Author (Year). Title. Journal: "quote". https://doi.org/…` pattern, quotes written in the same sentence after an identifier, plus `doi:…`, bare DOIs,
 `PMID: …`, `arXiv:…` and PubMed/arXiv links. Numbered and author-year citations work too: a quote in the text followed by `[1]`, `[^1]`,
-`[1, 2]`, `[1-3]` or an unambiguous `(Author, Year)` / `Author (Year)` citation is checked against the matching entry in the reference list.
+`[1, 2]`, `[1-3]` or an unambiguous `(Author, Year)` / `Author (Year)` citation is checked against the matching entry in the reference list, and dangling markers or uncited numbered/footnote entries are flagged as errors.
 
 Most invented citations have no DOI: `Chen, L. (2021). A plausible title. Journal of Something, 14(2), 88–97.`
 Entries like that under a reference-list heading (`## References`, `参考文献`, `Sources` …), and `[1] …` or
@@ -136,7 +137,7 @@ A ready-to-use Agent Skill guide lives in [`skills/claimcite/SKILL.md`](skills/c
 
 ### Offline benchmark
 
-Run the 22-case fixture-backed benchmark locally (zero network calls):
+Run the 24-case fixture-backed benchmark locally (zero network calls):
 
 ```bash
 uv run python benchmarks/run.py
@@ -154,8 +155,8 @@ Each item is a self-contained piece of work. Pick one and open an issue to say y
 - [ ] **More registries**: OpenAlex, Semantic Scholar, CNKI/Wanfang metadata (`arXiv` and DataCite `10.48550/arXiv.*` are supported)
 - [x] **Full text**: look for quotes in open-access full text (PubMed Central, Europe PMC), not only abstracts
 - [ ] **Support check**: does the source support the sentence? Pluggable LLM judge, local models first
-- [x] **Benchmark**: offline 22-case fixture benchmark in [`benchmarks/`](benchmarks/README.md) (more public corpora welcome)
-- [x] **Numbered citations**: `[1]`, `[1-3]` and footnotes `[^1]` linked to the reference list
+- [x] **Benchmark**: offline 24-case fixture benchmark in [`benchmarks/`](benchmarks/README.md) (more public corpora welcome)
+- [x] **Numbered citations**: `[1]`, `[1-3]` and footnotes `[^1]` linked to the reference list (including missing-entry & uncited-entry detection)
 - [ ] **More input formats**: BibTeX, Word / PDF input
 - [x] **Integrations**: GitHub Action, pre-commit hook, stdio MCP server (`claimcite mcp`), Agent Skill
 - [ ] Browser extension

@@ -44,6 +44,9 @@ LABELS = {
         "none": "No citations found.",
         "retracted": "This paper has been retracted",
         "retracted_by": "This paper has been retracted (notice: doi:{d})",
+        "dangling_marker": "Citation [{m}] has no matching entry in the reference list (line {lines})",
+        "dangling_marker_plural": "Citation [{m}] has no matching entry in the reference list (lines {lines})",
+        "uncited": "Reference [{m}] is never cited in the text",
         "evidence": "Study type (as tagged by PubMed)",
         "disclaimer": "Automated check. It confirms that sources exist and match; it does not judge "
         "whether a claim is true and is not medical advice.",
@@ -82,6 +85,9 @@ LABELS = {
         "none": "没有找到任何引用。",
         "retracted": "该论文已被撤稿",
         "retracted_by": "该论文已被撤稿（撤稿声明：doi:{d}）",
+        "dangling_marker": "正文引用了 [{m}]（第 {lines} 行），但参考文献中没有对应条目",
+        "dangling_marker_plural": "正文引用了 [{m}]（第 {lines} 行），但参考文献中没有对应条目",
+        "uncited": "参考文献 [{m}] 在正文中从未被引用",
         "evidence": "研究类型（PubMed 标注）",
         "disclaimer": "自动核查只确认出处存在且对得上，不判断说法本身是否正确，也不构成医疗建议。",
     },
@@ -93,7 +99,7 @@ def summary(findings: list[Finding]) -> dict[str, int]:
     return {s: c.get(s, 0) for s in STATUSES}
 
 
-def _problems(f: Finding, L: dict[str, str]) -> list[str]:
+def _source_problems(f: Finding, L: dict[str, str]) -> list[str]:
     if f.ref.kind == "url":
         w = f.web
         if w is None:
@@ -143,7 +149,21 @@ def _problems(f: Finding, L: dict[str, str]) -> list[str]:
     return out
 
 
+def _problems(f: Finding, L: dict[str, str], lang: str = "en") -> list[str]:
+    if f.ref.kind == "marker":
+        lines = f.ref.used_lines or [f.ref.line]
+        sep = "、" if lang == "zh" else ", "
+        key = "dangling_marker_plural" if len(lines) > 1 else "dangling_marker"
+        return [L[key].format(m=f.ref.id, lines=sep.join(str(n) for n in lines))]
+    uncited_tail = [L["uncited"].format(m=f.ref.label)] if f.uncited and f.ref.label else []
+    if f.uncited and f.note == "no_title":
+        return uncited_tail
+    return _source_problems(f, L) + uncited_tail
+
+
 def _label(ref) -> str:
+    if ref.kind == "marker":
+        return f"`[{ref.id}]`"
     if ref.kind != "text":
         return f"`{ref.kind}:{ref.id}`"
     shown = ref.title or ref.context
@@ -163,7 +183,7 @@ def to_markdown(findings: list[Finding], lang: str = "en") -> str:
         if f.evidence and f.evidence.key != "unknown":
             label = f.evidence.label_zh if lang == "zh" else f.evidence.label_en
             lines.append(f"  - {L['evidence']}{'：' if lang == 'zh' else ': '}{label}")
-        lines += [f"  - {p}" for p in _problems(f, L)]
+        lines += [f"  - {p}" for p in _problems(f, L, lang)]
     lines += ["", f"_{L['disclaimer']}_", ""]
     return "\n".join(lines)
 
@@ -175,6 +195,9 @@ def to_json(findings: list[Finding]) -> str:
             "kind": f.ref.kind,
             "id": f.ref.id,
             "line": f.ref.line,
+            "label": f.ref.label,
+            "used_lines": f.ref.used_lines,
+            "uncited": f.uncited,
             "status": f.status,
             "exists": f.exists,
             "retracted": f.retracted,

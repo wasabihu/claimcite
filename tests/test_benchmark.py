@@ -1,4 +1,4 @@
-"""Ensure the 22-case offline benchmark executes cleanly and scores 100%."""
+"""Ensure the 24-case offline benchmark executes cleanly and scores 100%."""
 
 import importlib.util
 from pathlib import Path
@@ -10,9 +10,9 @@ _MOD = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(_MOD)
 
 
-def test_offline_benchmark_passes_all_22_cases():
+def test_offline_benchmark_passes_all_24_cases():
     summary = _MOD.evaluate()
-    assert summary["total"] == 22
-    assert summary["passed"] == 22, summary
+    assert summary["total"] == 24
+    assert summary["passed"] == 24, summary
     assert summary["failed"] == 0
     assert summary["false_errors"] == 0

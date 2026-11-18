@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 class Reference:
     """One citation as written in the document."""
 
-    kind: str  # "doi" | "pmid" | "arxiv" | "url" | "text" (no identifier: looked up by title)
+    kind: str  # "doi" | "pmid" | "arxiv" | "url" | "text" | "marker"
     id: str  # normalised DOI (lower case), PMID digits, bare arXiv ID, or the URL
     line: int
     year: int | None = None
@@ -15,6 +15,9 @@ class Reference:
     quotes: list[str] = field(default_factory=list)  # text the author says comes from the source
     context: str = ""  # the citation text this was parsed from
     book: bool = False  # a written-out reference that looks like a book (no volume or pages)
+    label: str | None = None  # label in a numbered/footnote list ("1", "^note")
+    used_lines: list[int] = field(default_factory=list)  # body line numbers citing [label]
+    uncited: bool = False  # True when a numbered/footnote entry is never cited in the text
 
 
 @dataclass
@@ -71,3 +74,4 @@ class Finding:
     web: WebResult | None = None
     found_via: str | None = None  # "crossref" | "pubmed": a written-out reference found by title search
     note: str | None = None  # not_found | book | cjk | no_title | search_off (written-out references only)
+    uncited: bool = False
