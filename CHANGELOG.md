@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.1 (2026-11-18)
+
+- **TUN Fake-IP DNS compatibility**: allow public hostnames whose DNS resolves into `198.18.0.0/15` (used by Clash/Mihomo/Surge TUN Fake-IP proxies) while continuing to block literal non-public IPs and domains resolving to loopback, RFC 1918 private networks, link-local IMDS, or IPv6 ULA addresses.
+- **PubMed error visibility & secret redaction**: emit a sanitized `stderr` warning when batch PubMed DOI `esearch` fails before falling back to Crossref, and strip `api_key` parameters from all `LookupFailed` error messages.
+
 ## 0.4.0 (2026-11-16)
 
 - **Multi-line & author-year extraction**: unwrap soft-wrapped paragraphs and indented multi-line reference items while preserving exact source line numbers; attach years and quotes written in the same sentence after an identifier; link unambiguous `(Author, Year)` and `Author (Year)` body quotes to reference-list entries.
