@@ -27,6 +27,7 @@ class Record:
     years: list[int] = field(default_factory=list)  # every known publication year (online, print, issue)
     doi: str | None = None
     pmid: str | None = None
+    pmcid: str | None = None
     arxiv: str | None = None
     abstract: str | None = None
     pub_types: list[str] = field(default_factory=list)
@@ -64,6 +65,7 @@ class Finding:
     title_match: str = "not_stated"  # match | partial | mismatch | not_stated | not_comparable | unknown
     year_match: bool | None = None
     quotes: list[tuple[str, bool | None]] = field(default_factory=list)
+    fulltext_checked: bool = False
     evidence: Evidence | None = None
     error: str | None = None  # set when a registry could not be reached
     web: WebResult | None = None

@@ -46,7 +46,7 @@ def check_reference(ref: Reference, lookup: Lookup, web: bool = True, search: bo
         return Finding(ref, status="unchecked", error=str(e))
     if record is None:
         return Finding(ref, status="error", exists=False)
-    return _compare(Finding(ref, status="ok", exists=True, record=record))
+    return _compare(Finding(ref, status="ok", exists=True, record=record), lookup)
 
 
 def _check_text_reference(ref: Reference, lookup: Lookup, search: bool) -> Finding:
@@ -75,10 +75,10 @@ def _check_text_reference(ref: Reference, lookup: Lookup, search: bool) -> Findi
     except LookupFailed:
         pass  # the search result already has the title and year
     f = Finding(ref, status="ok", exists=True, record=full or record, found_via=via)
-    return _compare(f)
+    return _compare(f, lookup)
 
 
-def _compare(f: Finding) -> Finding:
+def _compare(f: Finding, lookup: Lookup | None = None) -> Finding:
     ref, record = f.ref, f.record
     f.title_match = compare_titles(ref.title, record.title)
     f.retracted = bool(record.retracted)
@@ -93,6 +93,15 @@ def _compare(f: Finding) -> Finding:
         f.year_match = any(abs(ref.year - y) <= 1 for y in years)
     text = " ".join(filter(None, [record.title, record.abstract]))
     f.quotes = [(q, quote_found(q, record.abstract and text)) for q in ref.quotes]
+    if (
+        f.quotes
+        and any(ok is False or (ok is None and not record.abstract and not CJK.search(q)) for q, ok in f.quotes)
+        and callable(getattr(lookup, "fulltext", None))
+    ):
+        ft = lookup.fulltext(record)
+        if ft:
+            f.fulltext_checked = True
+            f.quotes = [(q, ok if ok is True else quote_found(q, ft)) for q, ok in f.quotes]
     f.evidence = (
         evidence_level(record.pub_types, record.humans, record.animals)
         if record.source == "pubmed"

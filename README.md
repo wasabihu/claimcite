@@ -33,7 +33,7 @@ $ claimcite check examples/sample.md
 | The paper has not been retracted | PubMed `Retracted Publication` / `RetractionIn`, Crossref `updated-by` & `relation.is-retracted-by` |
 | The title written in the text matches the identifier | PubMed, Crossref, or arXiv; fuzzy match (ignoring publisher `RETRACTED:` prefix) |
 | The year matches (±1 for online-first vs print) | same (published & updated years for arXiv) |
-| Text in quotes (`"…"`, `“…”`, `「…」`) appears in the abstract | PubMed / Crossref / arXiv abstract |
+| Text in quotes (`"…"`, `“…”`, `「…」`) appears in the abstract | PubMed / Crossref / arXiv abstract, falling back to open-access full text (PubMed Central, Europe PMC) when needed |
 | Study type: meta-analysis, RCT, observational, animal… | PubMed publication types and MeSH |
 | A web link is alive and contains the quoted text | fetch the page (respecting `robots.txt`), strip HTML, normalise whitespace |
 | A reference with no DOI or PMID exists | search the title in Crossref, then PubMed; then check it like any other paper |
@@ -152,7 +152,7 @@ Each item is a self-contained piece of work. Pick one and open an issue to say y
 - [x] **References without identifiers**: find them by title (Crossref, PubMed)
 - [x] **Retractions**: flag retracted papers via Crossref (`updated-by` / `relation`) and PubMed (`Retracted Publication`)
 - [ ] **More registries**: OpenAlex, Semantic Scholar, CNKI/Wanfang metadata (`arXiv` and DataCite `10.48550/arXiv.*` are supported)
-- [ ] **Full text**: look for quotes in open-access full text (PubMed Central, Europe PMC), not only abstracts
+- [x] **Full text**: look for quotes in open-access full text (PubMed Central, Europe PMC), not only abstracts
 - [ ] **Support check**: does the source support the sentence? Pluggable LLM judge, local models first
 - [x] **Benchmark**: offline 20-case fixture benchmark in [`benchmarks/`](benchmarks/README.md) (more public corpora welcome)
 - [x] **Numbered citations**: `[1]`, `[1-3]` and footnotes `[^1]` linked to the reference list

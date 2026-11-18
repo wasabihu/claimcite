@@ -20,7 +20,12 @@ USER_AGENT = f"claimcite/{__version__} (+https://github.com/wasabihu/claimcite)"
 # Crossref's public pool: one request at a time, one list query a second (x-concurrency-limit: 1,
 # x-rate-limit-limit: 1 on /works?filter=…). Lookup sends it one batch after another.
 # arXiv asks automated harvesters for at least 3 seconds between requests.
-_MIN_INTERVAL = {"eutils.ncbi.nlm.nih.gov": 0.4, "api.crossref.org": 1.0, "export.arxiv.org": 3.0}
+_MIN_INTERVAL = {
+    "eutils.ncbi.nlm.nih.gov": 0.4,
+    "api.crossref.org": 1.0,
+    "export.arxiv.org": 3.0,
+    "www.ebi.ac.uk": 0.4,
+}
 _next_slot: dict[str, float] = {}
 _lock = threading.Lock()
 # Web pages are fetched from many sites that did not sign up for this; one request a second each.

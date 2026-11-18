@@ -22,6 +22,7 @@ LABELS = {
         "title_partial": "Title only partly matches. Registry title: {t}",
         "year": "Year differs: document {a}, registry {b}",
         "quote_missing": "Quoted text not found in the abstract (it may be in the full text): “{q}”",
+        "quote_missing_fulltext": "Quoted text not found in the abstract or open-access full text: “{q}”",
         "quote_unknown": "No abstract available to check the quote: “{q}”",
         "quote_language": "Quote is in Chinese and the abstract is not, so it cannot be compared word for word: “{q}”",
         "web": "Web page: not verified yet",
@@ -60,6 +61,7 @@ LABELS = {
         "title_partial": "标题只部分吻合。登记的标题：{t}",
         "year": "年份不一致：文中 {a}，登记 {b}",
         "quote_missing": "引文在摘要中没有找到（可能在全文里）：「{q}」",
+        "quote_missing_fulltext": "引文在摘要和开放获取全文中均未找到：「{q}」",
         "quote_unknown": "没有摘要，无法核对引文：「{q}」",
         "quote_language": "引文是中文，摘要不是中文，无法逐字核对：「{q}」",
         "web": "网页链接：暂不核查",
@@ -132,7 +134,8 @@ def _problems(f: Finding, L: dict[str, str]) -> list[str]:
         out.append(L["year"].format(a=f.ref.year, b=f.record.year))
     for q, ok in f.quotes:
         if ok is False:
-            out.append(L["quote_missing"].format(q=q))
+            key = "quote_missing_fulltext" if f.fulltext_checked else "quote_missing"
+            out.append(L[key].format(q=q))
         elif ok is None:
             has_abstract = bool(f.record and f.record.abstract)
             key = "quote_language" if has_abstract and CJK.search(q) else "quote_unknown"
@@ -184,6 +187,7 @@ def to_json(findings: list[Finding]) -> str:
                 "year": r.year,
                 "doi": r.doi,
                 "pmid": r.pmid,
+                "pmcid": r.pmcid,
                 "arxiv": r.arxiv,
                 "retracted": r.retracted,
                 "retraction_doi": r.retraction_doi,
@@ -192,6 +196,7 @@ def to_json(findings: list[Finding]) -> str:
             "title_match": f.title_match,
             "year_match": f.year_match,
             "quotes": [{"text": q, "found_in_abstract": ok} for q, ok in f.quotes],
+            "fulltext_checked": f.fulltext_checked,
             "evidence": f.evidence.key if f.evidence else None,
             "error": f.error,
             "found_via": f.found_via,

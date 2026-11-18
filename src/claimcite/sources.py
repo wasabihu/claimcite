@@ -28,6 +28,7 @@ from .net import NotFound, http_get
 from .text import compare_titles, title_ratio, words
 
 EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
+EPMC_API = "https://www.ebi.ac.uk/europepmc/webservices/rest"
 CROSSREF_SEARCH = "https://api.crossref.org/works?rows=5&select=DOI,title,issued,published-print,published-online&query.bibliographic="
 ARXIV_API = "https://export.arxiv.org/api/query?id_list="
 _ATOM_NS = "{http://www.w3.org/2005/Atom}"
@@ -57,6 +58,17 @@ def _retraction_doi(node: ET.Element) -> str | None:
     return retraction_doi
 
 
+def _norm_pmcid(raw: str | None) -> str | None:
+    if not raw:
+        return None
+    val = raw.strip().upper()
+    if not val:
+        return None
+    if val.isdigit():
+        return f"PMC{val}"
+    return val if val.startswith("PMC") else None
+
+
 def parse_pubmed(xml: str) -> dict[str, Record]:
     out: dict[str, Record] = {}
     root = ET.fromstring(xml)
@@ -78,6 +90,12 @@ def parse_pubmed(xml: str) -> dict[str, Record]:
             (i.text for i in art.iterfind("PubmedData/ArticleIdList/ArticleId") if i.get("IdType") == "doi"),
             None,
         ) or next((e.text for e in art.iter("ELocationID") if e.get("EIdType") == "doi"), None)
+        pmcid = _norm_pmcid(
+            next(
+                (i.text for i in art.iterfind("PubmedData/ArticleIdList/ArticleId") if i.get("IdType") == "pmc"),
+                None,
+            )
+        )
         abstract = " ".join(filter(None, (_text(a) for a in art.iter("AbstractText")))) or None
         mesh = {d.text for d in art.iter("DescriptorName")}
         pub_types = [p.text for p in art.iter("PublicationType") if p.text]
@@ -88,6 +106,7 @@ def parse_pubmed(xml: str) -> dict[str, Record]:
             years=years,
             doi=doi.lower() if doi else None,
             pmid=pmid,
+            pmcid=pmcid,
             abstract=abstract,
             pub_types=pub_types,
             humans="Humans" in mesh,
@@ -126,6 +145,17 @@ def parse_pubmed(xml: str) -> dict[str, Record]:
             )
             or next((e.text for e in doc.iter("ELocationID") if e.get("EIdType") == "doi"), None)
         )
+        pmcid = _norm_pmcid(
+            next((i.text for i in doc.iterfind("ArticleIdList/ArticleId") if i.get("IdType") == "pmc"), None)
+            or next(
+                (
+                    i.text
+                    for i in book_art.iterfind("PubmedBookData/ArticleIdList/ArticleId")
+                    if i.get("IdType") == "pmc"
+                ),
+                None,
+            )
+        )
         abstract = " ".join(filter(None, (_text(a) for a in doc.iter("AbstractText")))) or None
         pub_types = [p.text for p in doc.iter("PublicationType") if p.text]
         mesh = {d.text for d in book_art.iter("DescriptorName")}
@@ -136,6 +166,7 @@ def parse_pubmed(xml: str) -> dict[str, Record]:
             years=years,
             doi=doi.lower() if doi else None,
             pmid=pmid,
+            pmcid=pmcid,
             abstract=abstract,
             pub_types=pub_types,
             humans="Humans" in mesh,
@@ -147,14 +178,37 @@ def parse_pubmed(xml: str) -> dict[str, Record]:
 
 
 def clean_markup(s: str | None) -> str | None:
-    """Crossref titles and abstracts carry JATS/HTML markup, sometimes escaped twice."""
+    """Crossref titles, abstracts and JATS full-text XML carry markup, sometimes escaped twice."""
     if not s:
         return None
     s = html.unescape(html.unescape(s))
     s = re.sub(r"<xref\b[^>]*>.*?</xref>", "", s, flags=re.DOTALL)  # footnote markers
     s = re.sub(r"\s*(<su[bp]\b)", r"\1", s)  # "D <sub>3</sub>" -> "D3"
-    s = re.sub(r"<(?:jats:)?(?:p|title|sec)\b[^>]*>", " ", s)  # block tags separate words
+    s = re.sub(r"<(?:jats:)?(?:p|title|sec|li|td|th|tr|caption|label)\b[^>]*>", " ", s)
     return re.sub(r"\s+", " ", _TAG.sub("", s)).strip() or None
+
+
+def parse_jats_fulltext(xml: str) -> str | None:
+    """Extract clean body and float text from JATS full-text XML, excluding front/back matter."""
+    if not xml or not xml.lstrip().startswith("<"):
+        return None
+    try:
+        root = ET.fromstring(xml)
+    except ET.ParseError:
+        return None
+    # Some publishers (e.g. BMJ via Europe PMC) nest <ref-list> inside <body>; strip it first.
+    for parent in root.iter():
+        for child in list(parent):
+            if child.tag.rsplit("}", 1)[-1] in ("ref-list", "back"):
+                parent.remove(child)
+    chunks = []
+    for el in root.iter():
+        local = el.tag.rsplit("}", 1)[-1]
+        if local in ("body", "floats-group"):
+            chunks.append(ET.tostring(el, encoding="unicode"))
+    if not chunks:
+        return None
+    return clean_markup(" ".join(chunks))
 
 
 def parse_crossref(payload: str) -> Record:
@@ -277,6 +331,9 @@ class Lookup:
         self._web_lock = threading.Lock()
         self._web_cache: dict[str, str | BaseException] = {}
         self._web_inflight: dict[str, threading.Event] = {}
+        self._ft_lock = threading.Lock()
+        self._fulltext: dict[str, tuple[str | None, str | None]] = {}
+        self._ft_inflight: dict[str, threading.Event] = {}
         key = os.environ.get("NCBI_API_KEY")
         self._ncbi_key = f"&api_key={key}" if key else ""
 
@@ -325,6 +382,90 @@ class Lookup:
 
     def arxiv(self, arxiv_id: str) -> Record | None:
         return self._get("arxiv", arxiv_id)
+
+    def fulltext(self, record: Record) -> str | None:
+        """Fetch open-access JATS full text on demand from PMC / Europe PMC."""
+        if record.pmcid:
+            key = record.pmcid.upper()
+        elif record.source == "crossref" and record.doi:
+            key = f"doi:{record.doi.lower()}"
+        else:
+            return None
+
+        with self._ft_lock:
+            if key in self._fulltext:
+                pmcid, body = self._fulltext[key]
+                if pmcid and not record.pmcid:
+                    record.pmcid = pmcid
+                return body
+            inflight = self._ft_inflight.get(key)
+            if inflight is None:
+                inflight = threading.Event()
+                self._ft_inflight[key] = inflight
+                owner = True
+            else:
+                owner = False
+
+        if not owner:
+            inflight.wait()
+            with self._ft_lock:
+                pmcid, body = self._fulltext.get(key, (None, None))
+            if pmcid and not record.pmcid:
+                record.pmcid = pmcid
+            return body
+
+        pmcid: str | None = _norm_pmcid(record.pmcid)
+        body: str | None = None
+        try:
+            pmcid, body = self._fetch_fulltext(record, pmcid)
+        except Exception as e:  # noqa: BLE001 - optional check must never crash the run
+            print(
+                f"claimcite: full-text lookup failed ({type(e).__name__}: {cache_key(str(e))})",
+                file=sys.stderr,
+            )
+        finally:
+            with self._ft_lock:
+                self._fulltext[key] = (pmcid, body)
+                self._ft_inflight.pop(key, None)
+            inflight.set()
+        if pmcid and not record.pmcid:
+            record.pmcid = pmcid
+        return body
+
+    def _fetch_fulltext(self, record: Record, pmcid: str | None) -> tuple[str | None, str | None]:
+        if pmcid:
+            num = pmcid.removeprefix("PMC")
+            body = parse_jats_fulltext(
+                self.http(f"{EUTILS}/efetch.fcgi?db=pmc&id={num}&retmode=xml{self._ncbi_key}")
+            )
+            if body:
+                return pmcid, body
+            hit = self._epmc_oa_hit(f"PMCID:{pmcid}")
+            if hit and (hit.get("pmcid") or "").upper() == pmcid:
+                return pmcid, self._fetch_epmc_xml(pmcid)
+            return pmcid, None
+
+        if record.doi:
+            hit = self._epmc_oa_hit(f'DOI:"{record.doi}"')
+            if hit and (hit.get("doi") or "").lower() == record.doi.lower():
+                found_pmcid = _norm_pmcid(hit.get("pmcid"))
+                if found_pmcid:
+                    return found_pmcid, self._fetch_epmc_xml(found_pmcid)
+        return None, None
+
+    def _epmc_oa_hit(self, query: str) -> dict | None:
+        url = f"{EPMC_API}/search?query={quote(query, safe=':')}&format=json&pageSize=1"
+        data = json.loads(self.http(url))
+        results = (data.get("resultList") or {}).get("result") or []
+        if not results:
+            return None
+        hit = results[0]
+        if hit.get("inEPMC") == "Y" and hit.get("isOpenAccess") == "Y":
+            return hit
+        return None
+
+    def _fetch_epmc_xml(self, pmcid: str) -> str | None:
+        return parse_jats_fulltext(self.http(f"{EPMC_API}/{pmcid}/fullTextXML"))
 
     def _get(self, kind: str, ident: str) -> Record | None:
         if (kind, ident) not in self._cache:
