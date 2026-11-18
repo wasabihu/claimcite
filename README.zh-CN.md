@@ -116,7 +116,7 @@ repos:
 
 ### 离线评测基准
 
-运行基于真实录制 API 响应的 20 条离线基准集（无需联网）：
+运行基于真实录制 API 响应的 22 条离线基准集（无需联网）：
 
 ```bash
 uv run python benchmarks/run.py
@@ -134,7 +134,7 @@ uv run python benchmarks/run.py
 - [ ] **更多数据源**：OpenAlex、Semantic Scholar、知网/万方元数据（已支持 `arXiv` 与 DataCite `10.48550/arXiv.*`）
 - [x] **全文**：在开放获取的全文里找引文（PubMed Central、Europe PMC），不只看摘要
 - [ ] **支持度判断**：文献是否支持这句话？做成可插拔的模型判断，优先支持本地模型
-- [x] **基准测试集**：内置 [`benchmarks/`](benchmarks/README.md) 20 条真实录制离线评测集（欢迎补充更多公开语料）
+- [x] **基准测试集**：内置 [`benchmarks/`](benchmarks/README.md) 22 条真实录制离线评测集（欢迎补充更多公开语料）
 - [x] **编号引用**：`[1]`、`[1-3]` 和脚注 `[^1]` 对应到文末参考文献
 - [ ] **更多输入格式**：BibTeX，以及 Word / PDF 输入
 - [x] **集成**：GitHub Action、pre-commit 钩子、stdio MCP 服务（`claimcite mcp`）、Agent Skill

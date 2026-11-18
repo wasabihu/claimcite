@@ -39,7 +39,7 @@ Both must pass. Tests run offline in well under a second.
 | `src/claimcite/net.py` | HTTP with retries, per-host rate limits, SSRF guards, binary early-exit and charset decoding |
 | `src/claimcite/cache.py` | 30-day SQLite cache for registry responses with automatic expiry pruning |
 | `src/claimcite/web.py` | Fetch web pages (respecting `robots.txt`) and look for quoted text |
-| `benchmarks/` | 20-case offline verification benchmark backed by recorded fixtures |
+| `benchmarks/` | 22-case offline verification benchmark backed by recorded fixtures |
 | `tests/fixtures/` | Real responses recorded from the services |
 
 ### Rules
@@ -94,7 +94,7 @@ uv run ruff check src tests benchmarks
 | `src/claimcite/net.py` | 带重试、按站点限速、SSRF 拦截、二进制早退与编码识别的网络请求 |
 | `src/claimcite/cache.py` | 注册表响应 30 天 SQLite 磁盘缓存（启动自动清理过期记录） |
 | `src/claimcite/web.py` | 抓取网页（遵守 `robots.txt`），查找引文 |
-| `benchmarks/` | 基于真实录制响应的 20 条离线评测基准 |
+| `benchmarks/` | 基于真实录制响应的 22 条离线评测基准 |
 | `tests/fixtures/` | 从真实服务录下来的响应 |
 
 ### 规则
