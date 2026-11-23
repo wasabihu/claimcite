@@ -1,5 +1,7 @@
 # claimcite 引用核查
 
+[![wasabihu/claimcite MCP server](https://glama.ai/mcp/servers/wasabihu/claimcite/badges/score.svg)](https://glama.ai/mcp/servers/wasabihu/claimcite)
+
 [English](README.md) · **中文**
 
 逐条检查文章里的引用：文献是否真的存在，编号是否真的对应文中写的那篇论文，引号里号称原文的句子是否真的出自这篇论文。

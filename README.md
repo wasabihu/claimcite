@@ -1,5 +1,7 @@
 # claimcite
 
+[![wasabihu/claimcite MCP server](https://glama.ai/mcp/servers/wasabihu/claimcite/badges/score.svg)](https://glama.ai/mcp/servers/wasabihu/claimcite)
+
 **English** · [中文](README.zh-CN.md)
 
 Check that every citation in a document is real, points to the paper the text says it does, and actually contains the words quoted from it.
