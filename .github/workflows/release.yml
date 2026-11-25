@@ -16,9 +16,15 @@ jobs:
       - run: uv run pytest -q
       - name: Tag matches the package version
         run: |
-          test "v$(uv run python -c 'import claimcite; print(claimcite.__version__)')" = "$GITHUB_REF_NAME"
-          test "v$(uv run python -c 'import json; print(json.load(open(\"server.json\"))[\"version\"])')" = "$GITHUB_REF_NAME"
-          test "v$(uv run python -c 'import json; print(json.load(open(\"server.json\"))[\"packages\"][0][\"version\"])')" = "$GITHUB_REF_NAME"
+          uv run python - <<'PY'
+          import json, os, claimcite
+          tag = os.environ["GITHUB_REF_NAME"]
+          assert f"v{claimcite.__version__}" == tag, f"__version__ {claimcite.__version__} != {tag}"
+          srv = json.load(open("server.json", encoding="utf-8"))
+          assert f"v{srv['version']}" == tag, f"server.json {srv['version']} != {tag}"
+          assert f"v{srv['packages'][0]['version']}" == tag, f"server.json pkg != {tag}"
+          print("Version match verified:", tag)
+          PY
       - run: uv build
       - uses: actions/upload-artifact@v4
         with:
