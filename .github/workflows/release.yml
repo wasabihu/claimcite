@@ -15,7 +15,10 @@ jobs:
       - run: uv sync
       - run: uv run pytest -q
       - name: Tag matches the package version
-        run: test "v$(uv run python -c 'import claimcite; print(claimcite.__version__)')" = "$GITHUB_REF_NAME"
+        run: |
+          test "v$(uv run python -c 'import claimcite; print(claimcite.__version__)')" = "$GITHUB_REF_NAME"
+          test "v$(uv run python -c 'import json; print(json.load(open(\"server.json\"))[\"version\"])')" = "$GITHUB_REF_NAME"
+          test "v$(uv run python -c 'import json; print(json.load(open(\"server.json\"))[\"packages\"][0][\"version\"])')" = "$GITHUB_REF_NAME"
       - run: uv build
       - uses: actions/upload-artifact@v4
         with:
@@ -33,6 +36,39 @@ jobs:
           name: dist
           path: dist/
       - uses: pypa/gh-action-pypi-publish@release/v1
+  mcp-registry:
+    needs: pypi
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wait for PyPI release visibility
+        env:
+          PKG_VERSION: ${{ github.ref_name }}
+        run: |
+          ver="${PKG_VERSION#v}"
+          for i in $(seq 1 12); do
+            if curl -fsSL "https://pypi.org/pypi/claimcite/${ver}/json" >/dev/null 2>&1; then
+              echo "PyPI claimcite ${ver} is live"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Timed out waiting for PyPI claimcite ${ver}" >&2
+          exit 1
+      - name: Install verified mcp-publisher v1.8.16
+        run: |
+          curl -fsSLO "https://github.com/modelcontextprotocol/registry/releases/download/v1.8.16/mcp-publisher_linux_amd64.tar.gz"
+          echo "6e2f799550cf843c6fd3350498d56cc49be3dc0af1e6237eb0e6435c7a9d5c05  mcp-publisher_linux_amd64.tar.gz" | sha256sum -c -
+          tar -xzf mcp-publisher_linux_amd64.tar.gz mcp-publisher
+          chmod +x mcp-publisher
+      - name: Validate and publish to Official MCP Registry
+        run: |
+          ./mcp-publisher validate server.json
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish server.json
   github-release:
     needs: pypi
     runs-on: ubuntu-latest

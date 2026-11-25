@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.0 (2026-11-25)
+
+- **Zero-dependency local `xerj://` byte-span verification**: verify citations pointing to local XERJ/ES documents (`xerj://<index>/<doc_id>#b=<start>-<end>&f=<field>`) via loopback `_mget`/`_doc` without proxies, redirects, or external dependencies, flagging tampered quotes (`quote_mismatch`) cleanly while preserving the 4-state model.
+- **Official MCP Registry & Glama packaging**: added `server.json` (`io.github.wasabihu/claimcite`), `glama.json`, `Dockerfile`, and automated GitHub OIDC publishing to the Official MCP Registry alongside PyPI.
+
 ## 0.6.0 (2026-11-18)
 
 - **Numbered & footnote citation audit (`closes #11`)**: flag dangling `[n]` / `[^note]` markers in the body with no matching reference entry (reporting all cited line numbers in Markdown and `used_lines` in JSON) as well as numbered/footnote entries never cited in the text (`uncited: true` / `error`), while guarding against false alarms on statistical/IQR intervals (such as `60 [52-68] years`, `[0, 1]`, or `[1-5] scale`), quote-internal bracket numbers, Markdown reference links, and unnumbered bibliographies with no body markers.

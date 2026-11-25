@@ -206,3 +206,5 @@ Contributions of every size are welcome, including AI-assisted ones. See [CONTRI
 ## License
 
 MIT
+
+<!-- mcp-name: io.github.wasabihu/claimcite -->

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.wasabihu/claimcite",
+  "title": "claimcite — Citation & Quote Verifier",
+  "description": "Verify DOIs, PMIDs, arXiv IDs, web quotes, retractions, and local xerj:// byte-span citations.",
+  "version": "0.7.0",
+  "websiteUrl": "https://github.com/wasabihu/claimcite",
+  "repository": {
+    "url": "https://github.com/wasabihu/claimcite",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "claimcite",
+      "version": "0.7.0",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp",
+          "isRequired": true
+        }
+      ]
+    }
+  ]
+}
