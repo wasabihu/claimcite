@@ -21,6 +21,7 @@ from .workspace import (
     format_documents_report,
     make_default_lookup,
 )
+from .xerj import xerj_config_from_env
 
 SUPPORTED_PROTOCOLS = ("2025-06-18", "2025-03-26", "2024-11-05")
 DEFAULT_PROTOCOL = "2024-11-05"
@@ -50,10 +51,11 @@ TOOLS: list[dict[str, Any]] = [
         "name": "check_citations",
         "description": (
             "Verify every citation in Markdown or plain text: check whether each DOI, PMID, "
-            "arXiv ID, web link, or bibliographic reference exists (via PubMed, Crossref, OpenAlex, "
-            "and arXiv), whether the paper is retracted, whether titles and years match, whether "
-            "quoted text appears in the abstract, OA full text, or web page, and whether "
-            "numbered/footnote markers or entries are missing or uncited."
+            "arXiv ID, local xerj:// evidence span, web link, or bibliographic reference exists "
+            "(via PubMed, Crossref, OpenAlex, arXiv, and process-configured local XERJ), whether "
+            "the paper is retracted, whether titles and years match, whether quoted text appears "
+            "in the abstract, OA full text, XERJ span, or web page, and whether numbered/footnote "
+            "markers or entries are missing or uncited."
         ),
         "inputSchema": {
             "type": "object",
@@ -75,8 +77,9 @@ TOOLS: list[dict[str, Any]] = [
         "name": "check_files",
         "description": (
             "Verify citations in one or more local Markdown/text files or folders against PubMed, "
-            "Crossref, OpenAlex, arXiv, and OA full text. Returns a Markdown or JSON report "
-            "covering existence, retractions, title/year match, quotes, and numbered/footnote consistency."
+            "Crossref, OpenAlex, arXiv, OA full text, and process-configured local XERJ spans. "
+            "Returns a Markdown or JSON report covering existence, retractions, title/year match, "
+            "quotes, and numbered/footnote consistency."
         ),
         "inputSchema": {
             "type": "object",
@@ -163,6 +166,11 @@ class MCPServer:
         if name not in {"check_citations", "check_files"}:
             return _jsonrpc_error(req_id, -32602, f"Unknown tool: {name}")
 
+        allowed = set(_COMMON_OPTIONS) | ({"text"} if name == "check_citations" else {"paths"})
+        unknown = sorted(k for k in arguments if k not in allowed)
+        if unknown:
+            return _tool_error(f"Unexpected argument(s): {', '.join(unknown)}.", req_id)
+
         fmt = arguments.get("format", "md")
         lang = arguments.get("lang", "en")
         if fmt not in ("md", "json"):
@@ -173,7 +181,11 @@ class MCPServer:
         web = bool(arguments.get("web", True))
         search = bool(arguments.get("search", True))
         no_cache = bool(arguments.get("no_cache", self.default_no_cache))
-        lookup = self.lookup_factory(no_cache=no_cache)
+        # XERJ settings are wired strictly from process environment variables only, never tool args.
+        if self.lookup_factory is make_default_lookup:
+            lookup = make_default_lookup(no_cache=no_cache, xerj_config=xerj_config_from_env())
+        else:
+            lookup = self.lookup_factory(no_cache=no_cache)
 
         if name == "check_citations":
             text = arguments.get("text")

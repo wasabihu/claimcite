@@ -7,10 +7,11 @@ from concurrent.futures import ThreadPoolExecutor
 
 from .evidence import UNKNOWN, evidence_level
 from .extract import extract_references
-from .models import Finding, Record, Reference
+from .models import Finding, Record, Reference, XerjResult
 from .sources import Lookup, LookupFailed
 from .text import CJK, compare_titles, quote_found
 from .web import check_page
+from .xerj import XERJ_STATUS_MAP, extract_source_field, parse_xerj_uri, verify_xerj_span
 
 __all__ = ["check_documents", "check_reference", "check_text", "compare_titles", "quote_found"]
 
@@ -31,6 +32,8 @@ def check_reference(ref: Reference, lookup: Lookup, web: bool = True, search: bo
 
 
 def _check_source_reference(ref: Reference, lookup: Lookup, web: bool = True, search: bool = True) -> Finding:
+    if ref.kind == "xerj":
+        return _check_xerj_reference(ref, lookup)
     if ref.kind == "text":
         return _check_text_reference(ref, lookup, search)
     if ref.kind == "url" and not web:
@@ -57,6 +60,84 @@ def _check_source_reference(ref: Reference, lookup: Lookup, web: bool = True, se
     if record is None:
         return Finding(ref, status="error", exists=False)
     return _compare(Finding(ref, status="ok", exists=True, record=record), lookup)
+
+
+def _check_xerj_reference(ref: Reference, lookup: Lookup) -> Finding:
+    parsed, err = parse_xerj_uri(ref.id)
+    if parsed is None:
+        return Finding(ref, status="error", xerj=XerjResult(state="invalid_uri", detail=err))
+
+    outcome = lookup.xerj_doc(parsed.index, parsed.doc_id)
+    if outcome.state in ("auth_error", "xerj_unconfigured", "network_error"):
+        detail = outcome.detail or outcome.state
+        return Finding(
+            ref,
+            status="unchecked",
+            error=detail,
+            xerj=XerjResult(
+                state=outcome.state,
+                index=parsed.index,
+                doc_id=parsed.doc_id,
+                field=parsed.field,
+                offset_mode=parsed.offset_mode,
+                start=parsed.start,
+                end=parsed.end,
+                detail=detail,
+            ),
+        )
+    if outcome.state == "doc_not_found":
+        return Finding(
+            ref,
+            status="error",
+            exists=False,
+            xerj=XerjResult(
+                state="doc_not_found",
+                index=parsed.index,
+                doc_id=parsed.doc_id,
+                field=parsed.field,
+                offset_mode=parsed.offset_mode,
+                start=parsed.start,
+                end=parsed.end,
+                detail=outcome.detail,
+            ),
+        )
+
+    resolved_field, full_text = extract_source_field(outcome.source, parsed.field)
+    if full_text is None:
+        detail = (
+            f"field '{parsed.field}' missing or non-text"
+            if parsed.field
+            else "no text field found (probed: text, body, content, code)"
+        )
+        return Finding(
+            ref,
+            status="error",
+            exists=True,
+            xerj=XerjResult(
+                state="field_missing",
+                index=parsed.index,
+                doc_id=parsed.doc_id,
+                field=resolved_field,
+                offset_mode=parsed.offset_mode,
+                start=parsed.start,
+                end=parsed.end,
+                detail=detail,
+            ),
+        )
+
+    strict_ws = bool(getattr(getattr(lookup, "xerj_config", None), "strict_whitespace", False))
+    result = verify_xerj_span(
+        full_text,
+        offset_mode=parsed.offset_mode,
+        start=parsed.start,
+        end=parsed.end,
+        quotes=ref.quotes,
+        strict_whitespace=strict_ws,
+        index=parsed.index,
+        doc_id=parsed.doc_id,
+        field=resolved_field,
+    )
+    return Finding(ref, status=XERJ_STATUS_MAP[result.state], exists=True, xerj=result)
 
 
 def _check_text_reference(ref: Reference, lookup: Lookup, search: bool) -> Finding:
@@ -141,6 +222,7 @@ def check_documents(
     dois = [r.id for r in all_refs if r.kind == "doi"]
     pmids = [r.id for r in all_refs if r.kind == "pmid"]
     arxivs = [r.id for r in all_refs if r.kind == "arxiv"]
+    xerj_uris = [r.id for r in all_refs if r.kind == "xerj"]
     if search:
         # One search at a time (Crossref's limit); Lookup.find memoizes repeated contexts.
         for r in all_refs:
@@ -152,6 +234,8 @@ def check_documents(
                 if hit and hit[1].doi:
                     dois.append(hit[1].doi)
     lookup.prefetch(dois=dois, pmids=pmids, arxivs=arxivs)
+    if xerj_uris and callable(getattr(lookup, "prefetch_xerj", None)):
+        lookup.prefetch_xerj(xerj_uris)
 
     with ThreadPoolExecutor(max_workers=lookup.workers) as pool:
         flat_findings = list(pool.map(lambda ref: check_reference(ref, lookup, web, search), all_refs))

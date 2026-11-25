@@ -40,6 +40,7 @@ $ claimcite check examples/sample.md --lang zh
 | 网页链接能否打开、是否包含引号里的原文 | 抓取页面（遵守 `robots.txt`）、剥离 HTML、规范化空白 |
 | 没有 DOI / PMID 的参考文献是否存在 | 用标题先搜 Crossref，再搜 PubMed；找到后和其他论文一样核对 |
 | 编号引用与脚注是否和参考文献一一对应 | 报出正文写了 `[5]`/`[^1]` 但文末缺条目的编号与行号，以及参考文献列出却从未被引用的编号/脚注条目 |
+| 本地 XERJ 证据片段（`xerj://`）是否存在且引文逐字吻合 | 只读批量 `POST /_mget`（回退 `GET /{index}/_doc/{doc_id}`），严格校验 UTF-8 字节（`#b=`/`#offset=`）或字符（`#c=`）跨度，绝不写入 SQLite 磁盘缓存 |
 
 支持 Markdown 和纯文本（自动合并软换行段落与跨行缩进参考文献），能识别常见的 `作者 (年份). 标题. 期刊：「引文」. <https://doi.org/…>` 格式、标识符后同句内的引文，也能识别 `doi:…`、裸 DOI、`PMID: …`、`arXiv:…` 及对应链接。同时支持编号引用与作者-年份引用：正文引号后跟着 `[1]`、`[^1]`、`[1, 2]`、`[1-3]`，或无歧义的 `(Author, Year)` / `Author (Year)`，都会拿去和文末参考文献里对应的那一条核对；若出现没有对应文献的悬空编号或从未被引用的编号/脚注条目，会直接报为错误。
 
@@ -64,6 +65,26 @@ claimcite check 文章.md --format json # 给脚本和 CI 用
 查询成功的记录会在磁盘上缓存 **30 天**（默认 `~/.cache/claimcite/v1/`，或 `$XDG_CACHE_HOME/claimcite/v1/`），改一行再跑不会把所有请求重发一遍。查询失败不缓存。单次运行想绕过缓存，加 `--no-cache`。
 
 抓取网页时每个网站每秒最多请求一次，所以有几百个链接的文档，第一次运行要几分钟。只想核查 DOI 和 PMID，加 `--no-web`。PDF 里的引文暂时不核对。
+
+### 本地 XERJ 证据片段核验（`xerj://`）
+
+`claimcite` 支持离线核验由 [`kbwall`](https://github.com/wasabihu/kbwall) 输出、指向本地 [`XERJ`](https://github.com/xerj-org/xerj) 知识库的无主机证据句柄（依然保持零第三方运行时依赖，纯 Python 3.10+ 标准库）：
+
+- **统一 URI 协议**（文档中严禁写入 `host:port`）：
+  - `xerj://<index>/<doc_id>#b=<byte_start>[-<byte_end>][&f=<field>]`
+  - `xerj://<index>/<doc_id>#c=<char_start>[-<char_end>][&f=<field>]`
+  - `xerj://<index>/<doc_id>#offset=<byte_start>[&f=<field>]`（`#b=<byte_start>` 的别名）
+  - 省略 `f=` 时，按确定顺序探测 `_source` 文本字段：`text -> body -> content -> code`。
+
+```bash
+# 指定本地回环 XERJ 节点地址（未配置时不自动探测默认端口）
+claimcite check notes.md --xerj-url http://127.0.0.1:9200 --lang zh
+XERJ_URL=http://127.0.0.1:9200 claimcite check notes.md --format json
+```
+
+- **命令行参数与优先级**：节点地址 `--xerj-url` > `XERJ_URL`；鉴权凭据 `--xerj-api-key` > `XERJ_AUTH`（保留 `ApiKey`/`Bearer` 前缀）> `XERJ_API_KEY`（自动补 `ApiKey ` 前缀）> `<xerj_data_dir>/admin.key`（`--xerj-data-dir` / `XERJ_DATA_DIR`）。可选参数：`--xerj-allow-remote`（默认强制 `https://`，除非同时显式传入 `--xerj-allow-insecure-http`）和 `--xerj-strict-whitespace`。
+- **安全与隐私底线**：默认仅允许回环地址（`127.0.0.1`、`::1`、`localhost`）、显式绕过系统与环境变量代理（`ProxyHandler({})`）、拦截全部 `3xx` 重定向、10 MiB 响应上限、只读批量 `POST /_mget`（403/405 回退 `GET /{index}/_doc/{doc_id}`），且**严禁将本地 XERJ 文档写入 30 天 SQLite 缓存**。
+- **MCP 安全隔离**：在 `claimcite mcp` 模式下，XERJ 节点与凭据仅从进程环境变量读取，绝不作为 MCP 工具入参暴露，防止提示词注入引发 SSRF。
 
 ### 在 CI 里用：GitHub Action
 
@@ -144,6 +165,15 @@ uv run python benchmarks/run.py
 - [ ] 浏览器插件
 - [x] **缓存**：多次运行之间缓存结果（磁盘缓存 30 天，`--no-cache` 可绕过）
 - [ ] 批量查询进一步提速
+
+## 已验证的 XERJ 开源生态
+
+| 环节 | 项目 | 定位 |
+|---|---|---|
+| **1. 静默采集** | **[`wasabihu/sessfork`](https://github.com/wasabihu/sessfork)** | 无焦点抢占的后台浏览器登录态分叉（`sessfork-mcp` / `sessfork-browser`）与脱敏登录态网页入库 XERJ。 |
+| **2. 检索引擎与开源模型** | **[`xerj-org/xerj`](https://github.com/xerj-org/xerj)**<br>**[`wasabihu/xerj-bilingual-fin-law-384`](https://huggingface.co/wasabihu/xerj-bilingual-fin-law-384)** *(MIT)*<br>**[`wasabihu/VeriCorpus-Reranker-0.6B`](https://huggingface.co/wasabihu/VeriCorpus-Reranker-0.6B)** *(Apache-2.0)* | 单文件 Rust 兼容 ES 检索引擎，搭配轻量中英金融/法律 384 维向量模型与 0.6B 精排模型。 |
+| **3. 只读 Agent 防火墙** | **[`wasabihu/kbwall`](https://github.com/wasabihu/kbwall)** | 约 `1 MB`、零外部依赖的本地只读 Rust MCP 防火墙，支持离线中文增强并自动输出 `xerj://` 字节跨度证据句柄。 |
+| **4. 引用核验与评测语料** | **[`wasabihu/claimcite`](https://github.com/wasabihu/claimcite)**<br>**[`wasabihu/vericorpus`](https://github.com/wasabihu/vericorpus)** | 零依赖学术引用与 `xerj://` UTF-8 跨度核验工具，以及审计级法规/财报/临床检索评测语料库。 |
 
 ## 姊妹项目
 

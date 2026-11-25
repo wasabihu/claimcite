@@ -40,6 +40,7 @@ $ claimcite check examples/sample.md
 | A web link is alive and contains the quoted text | fetch the page (respecting `robots.txt`), strip HTML, normalise whitespace |
 | A reference with no DOI or PMID exists | search the title in Crossref, then PubMed; then check it like any other paper |
 | Numbered and footnote citations match the reference list | report body markers like `[5]` or `[^1]` with no entry (with line numbers) and numbered/footnote entries never cited in the text |
+| Local XERJ evidence spans (`xerj://`) exist and match verbatim quotes | batch read-only `POST /_mget` (fallback `GET /{index}/_doc/{doc_id}`), exact UTF-8 byte (`#b=`/`#offset=`) or char (`#c=`) span verification, zero SQLite cache writes |
 
 It reads Markdown or plain text (unwrapping soft-wrapped lines and indented reference items) and understands the common
 `Author (Year). Title. Journal: "quote". https://doi.org/…` pattern, quotes written in the same sentence after an identifier, plus `doi:…`, bare DOIs,
@@ -84,6 +85,26 @@ request. Lookup failures are never cached. Use `--no-cache` to bypass the cache 
 
 Web pages are fetched at most once a second per site, so the first run over a document with hundreds of
 links takes minutes. Use `--no-web` to check only DOIs and PMIDs. Quotes in PDFs are not checked yet.
+
+### Local XERJ span verification (`xerj://`)
+
+`claimcite` verifies host-free local knowledge-base evidence handles emitted by [`kbwall`](https://github.com/wasabihu/kbwall) against a local [`XERJ`](https://github.com/xerj-org/xerj) node (still zero runtime dependencies, Python 3.10+ stdlib only):
+
+- **Shared URI contract** (strictly no `host:port` inside documents):
+  - `xerj://<index>/<doc_id>#b=<byte_start>[-<byte_end>][&f=<field>]`
+  - `xerj://<index>/<doc_id>#c=<char_start>[-<char_end>][&f=<field>]`
+  - `xerj://<index>/<doc_id>#offset=<byte_start>[&f=<field>]` (alias for `#b=<byte_start>`)
+  - When `f=` is omitted, `_source` text fields are probed deterministically in order: `text -> body -> content -> code`.
+
+```bash
+# Point to your local loopback XERJ node (never auto-probed when unset)
+claimcite check notes.md --xerj-url http://127.0.0.1:9200
+XERJ_URL=http://127.0.0.1:9200 claimcite check notes.md --format json
+```
+
+- **CLI flags & precedence**: `--xerj-url` > `XERJ_URL`; credentials follow `--xerj-api-key` > `XERJ_AUTH` (preserves `ApiKey`/`Bearer`) > `XERJ_API_KEY` (auto-prefixed `ApiKey `) > `<xerj_data_dir>/admin.key` (`--xerj-data-dir` / `XERJ_DATA_DIR`). Optional guards: `--xerj-allow-remote` (forces `https://` unless `--xerj-allow-insecure-http` is also passed) and `--xerj-strict-whitespace`.
+- **Hard security & privacy boundaries**: loopback-only by default (`127.0.0.1`, `::1`, `localhost`), explicit proxy bypass (`ProxyHandler({})`), all `3xx` redirects blocked, 10 MiB hard response cap, read-only batch `POST /_mget` (fallback `GET /{index}/_doc/{doc_id}`), and **never writes local XERJ documents into the 30-day SQLite registry cache**.
+- **MCP isolation**: when running `claimcite mcp`, XERJ settings are read strictly from process environment variables (`XERJ_URL`, `XERJ_AUTH`, `XERJ_API_KEY`, `XERJ_DATA_DIR`) and are never exposed as MCP tool arguments.
 
 ### In CI: GitHub Action
 
@@ -164,6 +185,15 @@ Each item is a self-contained piece of work. Pick one and open an issue to say y
 - [ ] Browser extension
 - [x] **Caching** between runs (30-day on-disk cache, `--no-cache` to bypass)
 - [ ] Faster batch lookups
+
+## Verified XERJ Open Ecosystem
+
+| Stage | Project | Role |
+|---|---|---|
+| **1. Capture** | **[`wasabihu/sessfork`](https://github.com/wasabihu/sessfork)** | Silent background Chromium auth fork (`sessfork-mcp` / `sessfork-browser`) and secret-redacting authenticated web ingestion into local XERJ. |
+| **2. Search Engine & Open Models** | **[`xerj-org/xerj`](https://github.com/xerj-org/xerj)**<br>**[`wasabihu/xerj-bilingual-fin-law-384`](https://huggingface.co/wasabihu/xerj-bilingual-fin-law-384)** *(MIT)*<br>**[`wasabihu/VeriCorpus-Reranker-0.6B`](https://huggingface.co/wasabihu/VeriCorpus-Reranker-0.6B)** *(Apache-2.0)* | Single-binary Rust ES-compatible search engine paired with compact bilingual CJK/EN financial & legal embedding and cross-encoder reranker models. |
+| **3. Read-Only Agent Firewall** | **[`wasabihu/kbwall`](https://github.com/wasabihu/kbwall)** | `~1 MB` air-gapped, loopback-only read-only Rust MCP firewall for XERJ that emits canonical `xerj://` byte-span evidence handles. |
+| **4. Citation & Corpus Verification** | **[`wasabihu/claimcite`](https://github.com/wasabihu/claimcite)**<br>**[`wasabihu/vericorpus`](https://github.com/wasabihu/vericorpus)** | Zero-dependency citation & `xerj://` UTF-8 span verifier paired with audit-grade statutory, financial, and clinical retrieval corpora. |
 
 ## Related project
 

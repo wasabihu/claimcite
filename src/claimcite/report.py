@@ -33,6 +33,15 @@ LABELS = {
         "web_quote_missing": "Quoted text not found on the page: “{q}”",
         "web_quote_unknown": "Could not read the page text (e.g. a PDF); quoted text not checked: “{q}”",
         "web_quote_language": "Quote is in Chinese and the page is not, so it cannot be compared word for word: “{q}”",
+        "xerj_verified": "XERJ span verified ({index}/{doc_id}, field {field})",
+        "xerj_quote_mismatch": "Quoted text not found in XERJ span: “{q}”",
+        "xerj_offset_out_of_range": "XERJ span offset is out of range or splits a UTF-8 character ({d})",
+        "xerj_doc_not_found": "XERJ document not found ({index}/{doc_id})",
+        "xerj_field_missing": "XERJ document has no matching text field ({d})",
+        "xerj_invalid_uri": "Invalid xerj:// URI ({d})",
+        "xerj_auth_error": "XERJ authentication or permission failed ({e}); not checked",
+        "xerj_unconfigured": "XERJ node not configured ({e}); not checked",
+        "xerj_network_error": "XERJ lookup failed ({e}); not checked",
         "failed": "Lookup failed, try again later ({e})",
         "found": "No DOI or PMID in the text; found by title in {via}: {id}",
         "not_found": "No paper with this title in Crossref or PubMed. It may not exist, or it may be a book, "
@@ -75,6 +84,15 @@ LABELS = {
         "web_quote_missing": "页面正文中未找到引文：「{q}」",
         "web_quote_unknown": "读不到页面文字（比如 PDF），引文未核对：「{q}」",
         "web_quote_language": "引文是中文，网页正文不是中文，无法逐字核对：「{q}」",
+        "xerj_verified": "XERJ 证据片段核验通过（{index}/{doc_id}，字段 {field}）",
+        "xerj_quote_mismatch": "XERJ 对应片段中未找到引文：「{q}」",
+        "xerj_offset_out_of_range": "XERJ 偏移量越界或落在 UTF-8 多字节字符中间（{d}）",
+        "xerj_doc_not_found": "XERJ 文档不存在（{index}/{doc_id}）",
+        "xerj_field_missing": "XERJ 文档缺少对应的文本字段（{d}）",
+        "xerj_invalid_uri": "无效的 xerj:// 引用地址（{d}）",
+        "xerj_auth_error": "XERJ 鉴权或权限不足（{e}），未核查",
+        "xerj_unconfigured": "未配置可用的 XERJ 节点（{e}），未核查",
+        "xerj_network_error": "XERJ 查询失败（{e}），未核查",
         "failed": "查询失败，请稍后重试（{e}）",
         "found": "文中没有 DOI 或 PMID，按标题在 {via} 找到：{id}",
         "not_found": "在 Crossref 和 PubMed 都没找到这个标题的文献：可能不存在，也可能是书、报告，或标题和原文写法不同。",
@@ -100,6 +118,32 @@ def summary(findings: list[Finding]) -> dict[str, int]:
 
 
 def _source_problems(f: Finding, L: dict[str, str]) -> list[str]:
+    if f.ref.kind == "xerj":
+        x = f.xerj
+        if x is None:
+            return [L["xerj_unconfigured"].format(e=f.error or "unconfigured")]
+        if x.state == "verified":
+            return [
+                L["xerj_verified"].format(
+                    index=x.index or "?", doc_id=x.doc_id or "?", field=x.field or "?"
+                )
+            ]
+        if x.state == "quote_mismatch":
+            mismatches = [L["xerj_quote_mismatch"].format(q=q) for q, ok in x.quotes if ok is False]
+            return mismatches or [L["xerj_quote_mismatch"].format(q=x.detail or "?")]
+        if x.state == "offset_out_of_range":
+            return [L["xerj_offset_out_of_range"].format(d=x.detail or "out of range")]
+        if x.state == "doc_not_found":
+            return [L["xerj_doc_not_found"].format(index=x.index or "?", doc_id=x.doc_id or "?")]
+        if x.state == "field_missing":
+            return [L["xerj_field_missing"].format(d=x.detail or x.field or "text/body/content/code")]
+        if x.state == "invalid_uri":
+            return [L["xerj_invalid_uri"].format(d=x.detail or "malformed")]
+        if x.state == "auth_error":
+            return [L["xerj_auth_error"].format(e=f.error or x.detail or "unauthorized")]
+        if x.state == "xerj_unconfigured":
+            return [L["xerj_unconfigured"].format(e=f.error or x.detail or "set --xerj-url or XERJ_URL")]
+        return [L["xerj_network_error"].format(e=f.error or x.detail or "error")]
     if f.ref.kind == "url":
         w = f.web
         if w is None:
@@ -164,6 +208,8 @@ def _problems(f: Finding, L: dict[str, str], lang: str = "en") -> list[str]:
 def _label(ref) -> str:
     if ref.kind == "marker":
         return f"`[{ref.id}]`"
+    if ref.kind == "xerj":
+        return f"`{ref.id}`"
     if ref.kind != "text":
         return f"`{ref.kind}:{ref.id}`"
     shown = ref.title or ref.context
@@ -230,6 +276,20 @@ def to_json(findings: list[Finding]) -> str:
                 "state": f.web.state,
                 "status_code": f.web.status_code,
                 "quotes": [{"text": q, "found": ok} for q, ok in f.web.quotes],
+            },
+            "xerj": None
+            if f.xerj is None
+            else {
+                "state": f.xerj.state,
+                "index": f.xerj.index,
+                "doc_id": f.xerj.doc_id,
+                "field": f.xerj.field,
+                "offset_mode": f.xerj.offset_mode,
+                "start": f.xerj.start,
+                "end": f.xerj.end,
+                "matched_excerpt": f.xerj.matched_excerpt,
+                "detail": f.xerj.detail,
+                "quotes": [{"text": q, "found": ok} for q, ok in f.xerj.quotes],
             },
         }
 

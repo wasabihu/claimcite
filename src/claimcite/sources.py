@@ -27,6 +27,7 @@ from .cache import cache_key
 from .models import Record, Reference
 from .net import NotFound, http_get
 from .text import compare_titles, title_ratio, words
+from .xerj import XerjConfig, XerjDocOutcome, fetch_xerj_docs, parse_xerj_uri, xerj_config_from_env
 
 EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 EPMC_API = "https://www.ebi.ac.uk/europepmc/webservices/rest"
@@ -379,9 +380,15 @@ class Lookup:
     (NCBI allows 3 requests/second) and runs the other registries in parallel.
     """
 
-    def __init__(self, http: Callable[[str], str] = http_get, workers: int = 8):
+    def __init__(
+        self,
+        http: Callable[[str], str] = http_get,
+        workers: int = 8,
+        xerj_config: XerjConfig | None = None,
+    ):
         self.http = http
         self.workers = workers
+        self.xerj_config: XerjConfig = xerj_config if xerj_config is not None else xerj_config_from_env()
         self._cache: dict[tuple[str, str], Record | LookupFailed | None] = {}
         self._found: dict[str, tuple[str, Record] | LookupFailed | None] = {}
         self._web_lock = threading.Lock()
@@ -390,6 +397,10 @@ class Lookup:
         self._ft_lock = threading.Lock()
         self._fulltext: dict[str, tuple[str | None, str | None]] = {}
         self._ft_inflight: dict[str, threading.Event] = {}
+        self._xerj_lock = threading.Lock()
+        # Single-run in-memory XERJ document pool; NEVER persisted to the 30-day SQLite cache.
+        self.xerj_docs: dict[tuple[str, str], XerjDocOutcome] = {}
+        self._xerj_inflight: dict[tuple[str, str], threading.Event] = {}
         key = os.environ.get("NCBI_API_KEY")
         self._ncbi_key = f"&api_key={key}" if key else ""
         oa_mailto = os.environ.get("OPENALEX_MAILTO", "").strip()
@@ -446,6 +457,49 @@ class Lookup:
 
     def arxiv(self, arxiv_id: str) -> Record | None:
         return self._get("arxiv", arxiv_id)
+
+    def prefetch_xerj(self, uris: list[str] = ()) -> None:
+        """Batch-fetch XERJ docs into the single-run in-memory pool (never writes to SQLite cache)."""
+        pairs: list[tuple[str, str]] = []
+        for uri in uris:
+            parsed, _ = parse_xerj_uri(uri)
+            if parsed is not None:
+                pairs.append((parsed.index, parsed.doc_id))
+        with self._xerj_lock:
+            missing = [p for p in dict.fromkeys(pairs) if p not in self.xerj_docs]
+        if not missing:
+            return
+        fetched = fetch_xerj_docs(missing, self.xerj_config)
+        with self._xerj_lock:
+            self.xerj_docs.update(fetched)
+
+    def xerj_doc(self, index: str, doc_id: str) -> XerjDocOutcome:
+        """Read a single XERJ doc from the in-memory run pool, fetching once if needed."""
+        key = (index, doc_id)
+        with self._xerj_lock:
+            if key in self.xerj_docs:
+                return self.xerj_docs[key]
+            inflight = self._xerj_inflight.get(key)
+            if inflight is None:
+                inflight = threading.Event()
+                self._xerj_inflight[key] = inflight
+                owner = True
+            else:
+                owner = False
+        if not owner:
+            inflight.wait()
+            with self._xerj_lock:
+                return self.xerj_docs[key]
+        try:
+            fetched = fetch_xerj_docs([key], self.xerj_config)
+            outcome = fetched[key]
+        finally:
+            with self._xerj_lock:
+                if "outcome" in locals():
+                    self.xerj_docs[key] = outcome
+                self._xerj_inflight.pop(key, None)
+            inflight.set()
+        return outcome
 
     def fulltext(self, record: Record) -> str | None:
         """Fetch open-access JATS full text on demand from PMC / Europe PMC."""

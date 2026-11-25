@@ -26,6 +26,9 @@ claimcite check draft.md --no-web
 
 # Machine-readable JSON (good for automated pipelines)
 claimcite check draft.md --format json
+
+# Verify local xerj:// evidence spans (loopback-only by default; never cached to SQLite)
+claimcite check draft.md --xerj-url http://127.0.0.1:9200
 ```
 
 Exit codes:
@@ -65,9 +68,11 @@ Exposed read-only MCP tools:
 - `check_citations(text, format="md", lang="en", web=True, search=True, no_cache=False)`
 - `check_files(paths, format="md", lang="en", web=True, search=True, no_cache=False)`
 
+For `xerj://` span verification over MCP, set `XERJ_URL` (and optionally `XERJ_AUTH`, `XERJ_API_KEY`, or `XERJ_DATA_DIR`) in the MCP server's process environment; XERJ node parameters are intentionally never accepted as MCP tool arguments.
+
 ## How to interpret findings and fix the draft
 
-- **Error (`exists: false`, `title_match: "mismatch"`, `retracted: true`, `kind: "marker"`, `uncited: true`)**: High-confidence problem. Replace or remove the nonexistent identifier, fix a swapped DOI/arXiv ID attached to the wrong paper, remove/replace a retracted paper (unless intentionally citing its retraction notice), or fix a dangling numbered/footnote citation (`kind: "marker"`) or uncited reference entry (`uncited: true`).
+- **Error (`exists: false`, `title_match: "mismatch"`, `retracted: true`, `kind: "marker"`, `uncited: true`, `xerj.state: "quote_mismatch" | "offset_out_of_range" | "doc_not_found" | "field_missing" | "invalid_uri"`)**: High-confidence problem. Replace or remove the nonexistent identifier, fix a swapped DOI/arXiv ID attached to the wrong paper, remove/replace a retracted paper (unless intentionally citing its retraction notice), fix a dangling numbered/footnote citation (`kind: "marker"`) or uncited reference entry (`uncited: true`), or fix a tampered quote / invalid byte span in a `xerj://` citation.
 - **Warning (`not_found`, `year_match: false`, `quote_missing`, `web.state: "dead"`)**: Needs human check. An unlinked reference may use an alternate title spelling, a quote may appear only in a paywalled full text (when not in open-access PMC/Europe PMC), or a website may block bots.
-- **Not checked (`cjk`, `book`, `search_off`, `web.state: "blocked"`)**: Expected when citing Chinese-language journals (CNKI/Wanfang have no open API), books, or pages disallowed by `robots.txt`. Do **not** treat Chinese paraphrases of English papers as missing quotes (`found_in_abstract: null` is expected).
+- **Not checked (`cjk`, `book`, `search_off`, `web.state: "blocked"`, `xerj.state: "xerj_unconfigured" | "auth_error" | "network_error"`)**: Expected when citing Chinese-language journals (CNKI/Wanfang have no open API), books, pages disallowed by `robots.txt`, or `xerj://` spans when no local XERJ node/auth is configured. Do **not** treat Chinese paraphrases of English papers as missing quotes (`found_in_abstract: null` is expected).
 - **Important limit**: Unquoted paraphrases are not checked by `claimcite`; only direct quotes in `"..."`, `“...”`, or `「...」` are matched against abstracts (PubMed, Crossref, OpenAlex `abstract_inverted_index`, arXiv), open-access full text (PMC/Europe PMC), or pages.

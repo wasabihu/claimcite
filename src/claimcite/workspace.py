@@ -11,6 +11,7 @@ from .models import Finding
 from .net import http_get
 from .report import to_json, to_markdown
 from .sources import Lookup
+from .xerj import XerjConfig
 
 DOCUMENT_SUFFIXES = {".md", ".markdown", ".txt"}
 CANNOT_READ = {"en": "claimcite: cannot read {path}: {reason}", "zh": "claimcite：读不了 {path}：{reason}"}
@@ -39,9 +40,13 @@ def documents(path: str) -> list[str]:
     return sorted(str(f) for f in found)
 
 
-def make_default_lookup(no_cache: bool = False, http_fn: Callable[[str], str] = http_get) -> Lookup:
+def make_default_lookup(
+    no_cache: bool = False,
+    http_fn: Callable[[str], str] = http_get,
+    xerj_config: XerjConfig | None = None,
+) -> Lookup:
     http = http_fn if no_cache else CachedHttp(http_fn, default_cache_dir())
-    return Lookup(http=http)
+    return Lookup(http=http, xerj_config=xerj_config)
 
 
 def format_documents_report(

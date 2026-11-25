@@ -4,6 +4,7 @@ Supported citation forms:
   - DOI: https://doi.org/10.x/y, doi:10.x/y, or a bare 10.x/y
   - PMID: "PMID: 123" or https://pubmed.ncbi.nlm.nih.gov/123
   - arXiv: "arXiv:1706.03762" or https://arxiv.org/abs/1706.03762
+  - local XERJ spans: xerj://<index>/<doc_id>#b=<start>[-<end>][&f=<field>] (and #c=, #offset=)
   - any other http(s) link (fetched and checked for availability and quoted text)
 
 Soft-wrapped paragraphs and indented multi-line list items are unwrapped while keeping exact
@@ -34,6 +35,9 @@ ARXIV_RE = re.compile(
     re.IGNORECASE,
 )
 URL_RE = re.compile(r"https?://" + _ASCII_TOKEN)
+# Inline (?i:...) only on the scheme: global re.I would fold Kelvin K / long-s into the non-ASCII exclusion.
+XERJ_RE = re.compile(r"(?i:xerj://)" + _ASCII_TOKEN)
+_LINK_LABEL_ONLY = re.compile(r"\s*\[[^\]\n]+\]\s*")
 # A publisher link carries the DOI followed by the name of the page: .../10.3389/fpsyg.2021.744551/full
 PAGE_SUFFIX = re.compile(
     r"(?:/(?:full|abstract|fulltext|pdf|epdf|pdfdirect|html|summary|references|figures))+$|\.pdf$",
@@ -235,8 +239,10 @@ def _clean_arxiv(raw: str) -> str:
 
 
 def _inside_link(line: str, pos: int) -> bool:
-    """True when the DOI at pos is part of another site's address, not written out on its own."""
-    return any(m.start() < pos < m.end() for m in URL_RE.finditer(line))
+    """True when the token at pos is part of a URL or xerj:// URI, not written out on its own."""
+    return any(m.start() < pos < m.end() for m in URL_RE.finditer(line)) or any(
+        m.start() < pos < m.end() for m in XERJ_RE.finditer(line)
+    )
 
 
 def _quotes_before(line: str, start: int, end: int) -> list[str]:
@@ -248,7 +254,8 @@ def _quotes_before(line: str, start: int, end: int) -> list[str]:
     )
     for m in SENTENCE_END.finditer(line, start, end):
         inside = any(s <= m.start() < e for s, e, _ in spans)
-        if not inside and any(ch.isalnum() for ch in line[m.end() : end]):
+        tail = line[m.end() : end]
+        if not inside and any(ch.isalnum() for ch in tail) and not _LINK_LABEL_ONLY.fullmatch(tail):
             start = m.end()  # a sentence ended before the citation; its quotes belong to something else
     return [q for s, _, q in spans if s >= start]
 
@@ -303,7 +310,11 @@ def extract_references(text: str) -> list[Reference]:
     for b_idx, blk in enumerate(blocks):
         line = blk.text
         hits: list[tuple[int, int, str, str]] = []
+        for m in XERJ_RE.finditer(line):
+            hits.append((m.start(), m.end(), "xerj", _clean_id(m.group(0))))
         for m in DOI_RE.finditer(line):
+            if any(s <= m.start() < e or m.start() <= s < m.end() for s, e, *_ in hits):
+                continue
             doi = _clean_id(m.group(1))
             if m.start() == m.start(1) and _inside_link(line, m.start()):
                 doi = PAGE_SUFFIX.sub("", doi)
@@ -504,7 +515,14 @@ def _attach_numbered_citations(
                 continue
             # Treat "[text][1]" as a Markdown reference link, unlike adjacent "[1][2]".
             if m.start() > 0 and blk.text[m.start() - 1] == "]" and m.start() != prev_mark_end:
-                link_used_labels.update(_labels(m.group(1)))
+                ref_labels = _labels(m.group(1))
+                link_used_labels.update(ref_labels)
+                link_open = blk.text.rfind("[", prev, m.start())
+                link_quotes = _quotes_before(blk.text, prev, link_open if link_open != -1 else m.start())
+                for lbl in ref_labels:
+                    ref = by_label.get(lbl)
+                    if ref and ref.kind == "xerj" and link_quotes:
+                        ref.quotes += [q for q in link_quotes if q not in ref.quotes]
                 prev = m.end()
                 continue
             prev_mark_end = m.end()
